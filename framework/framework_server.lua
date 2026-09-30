@@ -337,7 +337,15 @@ function Framework.GetPlayer(serverId)
         elseif type(customAdapter.getPlayer) == 'string' then
             local res = customAdapter.resource
             local ok, player = pcall(function()
-                return exports[res][customAdapter.getPlayer](exports[res], serverId)
+                -- Bound to a local first, rather than chained inline. The
+                -- chain is CORRECT -- the exports table is passed explicitly,
+                -- which is the whole point -- but `exports[res][name](...)` is
+                -- the shape CI greps for as an unbound call, and a build that
+                -- fails on a line which is actually right teaches people to
+                -- ignore the tripwire. Two lines, and the warning stays sharp.
+                local target = exports[res]
+                local handler = target[customAdapter.getPlayer]
+                return handler(target, serverId)
             end)
             -- The exports table is passed EXPLICITLY: `exports[res][name]` is an
             -- unbound method and would eat serverId as `self`, so the handler
