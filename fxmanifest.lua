@@ -47,7 +47,7 @@ game 'gta5'
 name "Cisoko - Core - Platform Services"
 description "Framework abstraction, state, inventory service, configuration and migrations."
 author "Cisoko"
-version "1.0.0"
+version "1.1.0"
 lua54 'yes'
 
 -- A real dependency, and the only one. `dependencies` makes the server start
@@ -69,11 +69,18 @@ client_scripts {
 }
 
 server_scripts {
+    -- The validator defines a table and reads nothing, so its position is
+    -- arbitrary -- it is listed first because it is the file that describes the
+    -- three config files below it, and that reads in the order an operator
+    -- edits them.
+    'server/validate_config.lua',
     'configs/master_config.lua',
     'configs/security_config.lua',
     'configs/discordLogs_config.lua',
     'framework/framework_server.lua',
     'server/inventory.lua',
     'server/migrations.lua',
+    'server/doctor.lua',
+    'server/commands.lua',
     'server/initialize.lua',
 }

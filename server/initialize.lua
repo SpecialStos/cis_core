@@ -1,4 +1,4 @@
--- Boot. Four jobs, in this order, and the order is the contract:
+-- Boot. Five jobs, in this order, and the order is the contract:
 --
 --   1. wait for cis_libs       -- everything below is a call into it
 --   2. hand over the config    -- cis_libs publishes what the operator wrote
@@ -6,10 +6,17 @@
 --                                 config table because a function cannot be
 --                                 SENT across the exports boundary
 --   4. announce and report     -- so `cis_debug` has something true to print
+--   5. validate and report     -- the config the operator actually wrote, next
+--                                 to the platform's answer to it
 --
 -- Step 2 before step 3 because a config carrying a webhook URL is a config the
 -- client payload must be built from, and step 3 before step 4 because a
 -- capability that appears after the report reads as a failed registration.
+--
+-- Step 5 is last because it is the only step that reads state the earlier steps
+-- produced. It reports on the install as it IS -- which framework was really
+-- detected, which capability is really held -- rather than on what the config
+-- asked for.
 
 -- Whether our config was the one that took effect. Kept here rather than
 -- re-derived, because the answer depends on a race with another resource and
@@ -73,6 +80,16 @@ CreateThread(function()
         tostring(Config.Framework.Inventory),
         tostring(Config.Framework.Target and Config.Framework.Target.Type),
         tostring(Config.Framework.Database and Config.Framework.Database.Type)))
+
+    -- ------------------------------------------------------------ the report
+    -- Last, so it can describe what the steps above actually did rather than
+    -- what they intended to: the capability table, the detected framework and
+    -- every setting that is not what the operator wrote.
+    --
+    -- This is the block that turns a config typo into a sentence instead of a
+    -- support ticket, which is the largest single cost saving in this resource.
+    -- It never blocks the boot -- see the note at the bottom of server/doctor.lua.
+    CisDoctor.bootReport()
 end)
 
 --- The custom drop handler. Reached only through the capability registered

@@ -9,17 +9,8 @@
 -- the sanitising, because each of those has a failure mode that looks like
 -- success from the console and is discovered weeks later.
 
-local passed, failed = 0, 0
-local failures = {}
-
-local function check(cond, msg)
-    if cond then
-        passed = passed + 1
-    else
-        failed = failed + 1
-        failures[#failures + 1] = msg
-    end
-end
+Test.begin('migrations')
+local check = Test.check
 
 -- ============================================================== sort ordering
 -- The reason this module exists rather than a plain array iteration: an id like
@@ -123,12 +114,4 @@ check(CoreLibs.clientFramework() ~= nil, 'clientFramework answers a table even w
 
 CoreLibs.invalidateClientConfig()
 check(type(CoreLibs.clientConfig()) == 'table', 'the cache can be dropped and refilled')
-
--- ------------------------------------------------------------------ report
-for i = 1, #failures do
-    io.stderr:write('FAIL(migrations): ' .. failures[i] .. '\n')
-end
-io.write(('migrations passed=%d failed=%d\n'):format(passed, failed))
-if failed > 0 then
-    os.exit(1)
-end
+Test.report()

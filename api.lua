@@ -29,7 +29,7 @@
 
 return {
     name = 'cis_core',
-    version = '1.0.0',
+    version = '1.1.0',
     api = 1,
     schema = 0,
 
@@ -59,6 +59,12 @@ return {
         GetCoreSummary = {
             since = '1.0.0', ['until'] = false, stable = true, deprecated = false,
             use = 'Resolved, non-secret state for diagnostics: configApplied, framework, inventory, providers, applied migrations',
+            realm = 'server',
+            signature = '()',
+        },
+        GetDoctorReport = {
+            since = '1.1.0', ['until'] = false, stable = true, deprecated = false,
+            use = 'The full install report as data: every environment line and every configuration problem, each with its fix. Same content as the `cis_core_doctor` console command. Carries no secret -- resource names, booleans, counts and reasons only',
             realm = 'server',
             signature = '()',
         },
