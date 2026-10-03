@@ -111,3 +111,13 @@ actually registers.
 ---
 
 **Author:** Cisoko · **Docs:** <https://docs.cisoko.net> · **Discord:** <https://discord.gg/cisoko>
+
+## Documents
+
+| | |
+|---|---|
+| [`DOCUMENTATION.md`](DOCUMENTATION.md) | Every capability, config key and contract |
+| [`MIGRATION.md`](MIGRATION.md) | Upgrading from 1.0.x, and what it costs you |
+| [`CHANGELOG.md`](CHANGELOG.md) | Keep a Changelog format, with the reasoning |
+| [`SECURITY.md`](SECURITY.md) | Trust model, what is enforced, how to report |
+| [`PLATFORM_NOTES.md`](PLATFORM_NOTES.md) | Where `cis_core` and `cis_libs` disagree, and which side is right |
