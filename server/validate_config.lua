@@ -245,10 +245,15 @@ local function check(report, root, rootName, path, spec)
             if type(value) == 'string' then
                 near = suggestKey(value, spec.names)
             end
+            -- The suggestion is the VALUE, not a path. The path is already the
+            -- subject of the message, so quoting it twice -- and quoting it
+            -- WRONG, as `Config.ox_inventory` for a key that actually lives at
+            -- `Config.Framework.Inventory` -- is how a fix line loses the reader
+            -- who was about to act on it.
             local fix
             if near then
-                fix = ('%s is %s, which this resource does not accept; did you mean %s?'):format(
-                    full, describe(value), ('%s.%s'):format(rootName, near))
+                fix = ('use %s instead -- nothing in this resource reads %s, so the configured value is ignored '
+                    .. 'and the documented fallback runs'):format(describe(near), describe(value))
             else
                 fix = ('%s must be one of: %s'):format(full, table.concat(spec.names, ', '))
             end

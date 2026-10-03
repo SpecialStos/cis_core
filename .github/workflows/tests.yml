@@ -30,6 +30,13 @@ jobs:
       - name: Run test suite
         run: npm test
 
+      - name: Lint
+        # `npm run test:all` covers this, but CI runs the steps separately on
+        # purpose so a failure names the thing that failed. The lint step was
+        # simply missing from that list for the life of this workflow -- every
+        # run in its history was green, and the linter had never run once.
+        run: npm run test:luacheck
+
       - name: Validate api.lua against the registered surface
         # api.lua is a contract, not a comment. The validator reads what the
         # resource actually registers -- names and parameter lists, out of the
