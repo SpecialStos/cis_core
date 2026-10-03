@@ -44,7 +44,15 @@ CisAuthority = {}
 -- Counted, and surfaced by cis_core_doctor, because a source that disagrees
 -- with itself is the signature of a cheat menu and an operator should never
 -- have to ask what it means.
+-- A source that NAMED somebody else. This is the one that means a cheat menu,
+-- and it is counted only when the payload contained a NUMBER -- see
+-- resolveSource for why that distinction is load-bearing.
 CisAuthority.spoofed = 0
+
+-- An event sent from a client with no source in the payload at all. Correctly
+-- answered, and evidence of nothing. Reported separately so the two cannot be
+-- confused by a reader -- or by whoever increments them.
+CisAuthority.anonymous = 0
 
 -- Logged once per boot at most. The first one is information and the thousandth
 -- is a flood: a resource that prints a line per forged event hands an attacker
@@ -127,12 +135,33 @@ function CisAuthority.resolveSource(payloadSource, eventName)
         return netSource
     end
 
-    CisAuthority.spoofed = CisAuthority.spoofed + 1
-    if not warned then
-        warned = true
-        print(('[cis_core] refused a spoofed event source on %s: the network says %d, the payload said %s. '
-            .. 'Acting as the network says. This line prints once; the count is in cis_core_doctor.')
-            :format(tostring(eventName), netSource, tostring(payloadSource)))
+    -- TWO COUNTS, AND THE DISTINCTION IS THE WHOLE POINT.
+    --
+    -- A client that sends the event with NO source at all is not forging
+    -- anything -- it sent nothing -- and the answer is still correct: it gets
+    -- its own source back. Counting that as a forgery made the one number
+    -- meant to detect a cheat menu forgeable by anyone:
+    --
+    --     TriggerServerEvent('QBCore:Server:PlayerLoaded')   -- zero bytes
+    --
+    -- is enough to drive it up, and cis_core_doctor then told an operator
+    -- "N spoofed event source(s) refused -- a client sent an event naming
+    -- somebody else's source". Nothing was named. Nothing was refused. The
+    -- operator's only correct response was to stop believing the counter.
+    --
+    -- So: a NUMBER that is not the sender is a forgery and is counted as one.
+    -- Anything else is an event sent with nothing, counted separately, and is
+    -- not evidence of anything.
+    if type(payloadSource) == 'number' then
+        CisAuthority.spoofed = CisAuthority.spoofed + 1
+        if not warned then
+            warned = true
+            print(('[cis_core] refused a forged event source on %s: the network says %d, the payload named %d. '
+                .. 'Acting as the network says. This line prints once; the count is in cis_core_doctor.')
+                :format(tostring(eventName), netSource, payloadSource))
+        end
+    else
+        CisAuthority.anonymous = CisAuthority.anonymous + 1
     end
     return netSource
 end

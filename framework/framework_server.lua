@@ -171,7 +171,14 @@ local function detect()
                 getPlayer = customAdapter.getPlayer,
             } or nil
         )
-        Framework.detected = choice
+        -- Through record(), not by assigning cis_libs's return value verbatim.
+        -- doctor.lua and commands.lua read detected.name / .how / .resource /
+        -- .version, and if that shape ever changed `choice.name` would be nil,
+        -- `provider` would be nil, and every `provider == '...'` comparison
+        -- would silently fall to its last `else` -- with no error anywhere,
+        -- which is the worst failure mode this file has.
+        record(choice.name, choice.how or 'detected', choice.resource, choice.reason)
+        Framework.detected.version = choice.version
         provider = choice.name
 
         if choice.name == 'NONE' then
@@ -236,6 +243,28 @@ local function detect()
             -- client, which receives it in the config payload -- agrees with
             -- reality rather than with what someone guessed.
             Config.Framework.Type = choice.name
+        end
+
+        -- The AUTO path's ESX gate, and it is SCOPED TO ESX on purpose.
+        --
+        -- The first version asked "did a framework object arrive at all", which
+        -- degraded two providers that legitimately have none: a QBOX server
+        -- reaches players through `exports.qbx_core:GetPlayer` and never
+        -- captures a core object, and a CUSTOM adapter is a function rather
+        -- than a table. Both were reported as NONE with a working bridge
+        -- behind them -- which is the same class of lie this gate exists to
+        -- prevent, pointed the other way.
+        --
+        -- QBCORE has its own `else` above. QBOX and CUSTOM are exempt by
+        -- design, and the reason is a comment here rather than in the reader's
+        -- head: qbx_core removed GetCoreObject entirely, and a custom adapter
+        -- is whatever the operator wired up.
+        if (provider == 'ESX' or provider == 'ESX-LEGACY') and ESX == nil then
+            print(('cis_libs: %s was detected but no framework object arrived; falling back to standalone')
+                :format(tostring(choice.name)))
+            record('NONE', 'detected', nil,
+                ('%s was detected but no framework object arrived'):format(tostring(choice.name)))
+            provider = 'NONE'
         end
         return
     end
@@ -517,12 +546,40 @@ function Framework.HasItem(source, item)
     return exports['cis_libs']:InventoryHas(source, item, 1)
 end
 
+-- THE DEFAULT ACCOUNT IS PER-FRAMEWORK, and getting it wrong is the quietest
+-- failure in this file.
+--
+-- It used to be `moneyType or 'cash'` for every framework. 'cash' is a QBCore
+-- money type. ESX's accounts are `bank`, `black_money` and `money` --
+-- there is no `cash` -- and `addAccountMoney('cash', 100)` on ESX does:
+--
+--     getAccount('cash')  ->  nil
+--     error("Tried To Set Add To Invalid Account cash For Player 3!")
+--
+-- The pcall below catches that and returns false, so on ESX EVERY money call
+-- that did not name an account silently did nothing and reported "declined".
+-- The documented call -- GiveMoney(src, 500) -- is exactly the one that fails,
+-- and `false` is byte-identical to "insufficient funds".
+--
+-- 'money' is ESX's alias for cash: `xPlayer.addMoney(money, reason)` is
+-- documented as an alias over the "money" account.
+local DEFAULT_ACCOUNT = {
+    QBCORE = 'cash',
+    QBOX = 'cash',
+    ESX = 'money',
+    ['ESX-LEGACY'] = 'money',
+}
+
+local function defaultAccount()
+    return DEFAULT_ACCOUNT[provider] or 'cash'
+end
+
 function Framework.GiveMoney(serverId, amount, moneyType)
     local player = Framework.GetPlayer(serverId)
     if not player then
         return false
     end
-    moneyType = moneyType or 'cash'
+    moneyType = moneyType or defaultAccount()
     if provider == 'QBCORE' or provider == 'QBOX' then
         -- 'markedbills' is an ITEM on every framework this supports, not an
         -- account, so it is routed to the inventory with the value carried as
@@ -569,7 +626,7 @@ function Framework.RemoveMoney(serverId, amount, moneyType)
     if not player then
         return false
     end
-    moneyType = moneyType or 'cash'
+    moneyType = moneyType or defaultAccount()
     if provider == 'QBCORE' or provider == 'QBOX' then
         if CisNormalize.moneyRoute(moneyType) == 'inventory' then
             return exports['cis_libs']:InventoryRemove(serverId, 'markedbills', 1)
@@ -965,16 +1022,50 @@ AddEventHandler('esx:playerLoaded', function(payloadSrc)
     end
 end)
 
-RegisterNetEvent('QBCore:Server:OnJobUpdate', function(payloadSrc, job)
-    local src = CisAuthority.resolveSource(payloadSrc, 'QBCore:Server:OnJobUpdate')
-    if src and type(job) == 'table' and job.name then
+-- THE JOB IS AS SENDER-CHOSEN AS THE SOURCE WAS, AND IT LANDS SOMEWHERE WORSE.
+--
+-- `resolveSource` hardens who an event is ABOUT. It says nothing about WHAT the
+-- event claims, and both of these handlers were reading the job straight out of
+-- the payload.
+--
+-- Where it lands: `PublishJobUpdate` feeds cis_libs's job histogram, whose own
+-- header says it exists for "how many cops are on right now for a dispatch
+-- balance". So the attack is:
+--
+--     TriggerServerEvent('QBCore:Server:OnJobUpdate', nil, { name = 'police' })
+--
+-- `resolveSource(nil, ...)` returns the attacker's OWN source -- correct, a
+-- client may act on itself -- and the payload job is published. The attacker is
+-- now in the police histogram with an actual framework job of `unemployed`,
+-- and every product gating on `GetOnlineJobCount('police')` is answering from a
+-- cheat menu. Dispatch balance and minimum-staffing are exactly the kinds of
+-- thing this is read for.
+--
+-- THE SECOND HALF IS WORSE. `job.name` was only tested for truthiness. A fresh
+-- table per call makes it a new histogram KEY every time -- an unbounded map a
+-- client grows at will -- while the decrement of the previous name takes a
+-- legitimate count with it.
+--
+-- So the job is DERIVED SERVER-SIDE, exactly as `QBCore:Server:PlayerLoaded`
+-- two handlers above already does. The framework is the authority on what job
+-- somebody has; an event about it is a notification, not an instruction.
+local function publishActualJob(src)
+    if not src then return end
+    local job = Framework.GetPlayerJob(src)
+    -- Type-checked as well as fetched. `CisHistogram` uses the name as a table
+    -- key, so anything that is not a string has to stop here.
+    if type(job) == 'table' and type(job.name) == 'string' and #job.name > 0 and #job.name <= 64 then
         exports['cis_libs']:PublishJobUpdate(job, src)
     end
+end
+
+RegisterNetEvent('QBCore:Server:OnJobUpdate', function(payloadSrc, job)
+    -- `job` is accepted and ignored on purpose. Passing it to publishActualJob
+    -- would reintroduce the whole finding; the parameter stays because the
+    -- runtime sends it and a handler cannot choose the arity it is called with.
+    publishActualJob(CisAuthority.resolveSource(payloadSrc, 'QBCore:Server:OnJobUpdate'))
 end)
 
 AddEventHandler('esx:setJob', function(payloadSrc, job)
-    local src = CisAuthority.resolveSource(payloadSrc, 'esx:setJob')
-    if src and type(job) == 'table' and job.name then
-        exports['cis_libs']:PublishJobUpdate(job, src)
-    end
+    publishActualJob(CisAuthority.resolveSource(payloadSrc, 'esx:setJob'))
 end)

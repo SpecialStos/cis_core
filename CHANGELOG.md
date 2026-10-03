@@ -76,6 +76,41 @@ state the roadmap has been asking for since it was written.
 
 ### Fixed
 
+- **[SECURITY] The job histogram was writable by any client.** `resolveSource`
+  hardened who an event was *about*; it said nothing about *what* the event
+  claimed, and both job-update handlers read the job straight out of the payload.
+  `TriggerServerEvent('QBCore:Server:OnJobUpdate', nil, { name = 'police' })`
+  put the sender in the police histogram while their actual framework job was
+  `unemployed` -- and that histogram is what dispatch balances and
+  minimum-staffing are answered from. Worse, `job.name` was only tested for
+  truthiness, so a fresh table per call was a new unbounded histogram key while
+  decrementing a legitimate count. The job is now DERIVED SERVER-SIDE from the
+  framework, exactly as `QBCore:Server:PlayerLoaded` already did. The framework
+  is the authority on what job somebody has; an event about it is a
+  notification, not an instruction.
+- **[SECURITY] The forgery counter was forgeable by anyone.** A client event
+  carrying *no* source incremented it, because `nil == netSource` is false.
+  A zero-byte `TriggerServerEvent` in a loop was enough, and
+  `cis_core_doctor` then told an operator "N spoofed event source(s) refused --
+  a client sent an event naming somebody else's source". Nothing was named and
+  nothing was refused. A forgery is now a NUMBER that is not the sender, counted
+  as one; an event that named nobody is counted separately and is evidence of
+  nothing.
+- **Every ESX money call with the default account silently did nothing.** The
+  default was `'cash'`, which is a QBCore money type. ESX's accounts are
+  `bank`, `black_money` and `money` -- there is no `cash` -- so
+  `addAccountMoney('cash', 100)` raises inside ESX, the pcall catches it, and
+  `GiveMoney(src, 500)` returns `false`. That is byte-identical to "insufficient
+  funds", and it is the documented call. The default is now per framework:
+  `money` on ESX, `cash` on QBCore and QBOX.
+- **The AUTO detection path could claim a framework it had not reached.**
+  `provider` is set from the detection result before any branch runs, and the
+  QBCORE and ESX branches had no `else`, so a `GetCoreObject` or
+  `getSharedObject` that failed left `provider == 'QBCORE'` with `QBCore ==
+  nil`: every method answered nil while the console had already printed
+  "framework QBCORE -- detected". This is the bug the CONFIGURED branch was
+  written to fix, on the path that is the shipped default. Both branches now
+  degrade to NONE with a recorded reason.
 - **[SECURITY] `Migrate` ran arbitrary SQL for any resource that could call
   it.** Every other export in this resource is namespaced: `StateSet` writes one
   key in the caller's own namespace, and the framework capability returns the

@@ -101,8 +101,15 @@ Test.note(('triggerServer fired=%s connected=%d detected=%s'):format(
     tostring(fired), #Env.env.players, tostring(Config.Framework.Type)))
 Test.note(('published before=%d after=%d'):format(jobsBefore, #publishedJobs))
 check(#publishedJobs == jobsBefore + 1, 'a server-side job change is published')
+
+-- NOT the job the payload carried. The job is derived from the framework
+-- server-side, because the payload is as sender-chosen as the source was and it
+-- lands in the histogram dispatch balances are answered from. The framework
+-- still says 'police' at this point, so the honest expectation is 'police' --
+-- publishing 'ambulance' here is the vulnerability, not the feature.
 local last = publishedJobs[#publishedJobs]
-check(last ~= nil and last.job ~= nil and last.job.name == 'ambulance', 'with the job it carried')
+check(last ~= nil and last.job ~= nil and last.job.name == 'police',
+    'and the job the FRAMEWORK says, not the one the payload claimed')
 
 -- The same event from a CLIENT naming somebody else: refused, and the attacker
 -- gets their own source. This is the security fix, exercised through the real

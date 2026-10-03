@@ -220,10 +220,20 @@ function CisDoctor.environment()
     -- of a cheat menu, and something an operator should never have to ask the
     -- meaning of.
     local spoofed = CisAuthority and CisAuthority.spoofed or 0
+    local anonymous = CisAuthority and CisAuthority.anonymous or 0
     if spoofed == 0 then
-        line(env, 'SET', 'event authority', 'clean -- no client has named a source that was not its own', nil)
+        line(env, 'SET', 'event authority',
+            ('clean -- no client named a source that was not its own%s'):format(
+                anonymous > 0 and (' (%d client-sent event(s) carried no source, which is answered with the '
+                    .. 'sender and is not a forgery)'):format(anonymous) or ''),
+            nil)
     else
-        line(env, 'MISSING', 'event authority', ('%d spoofed event source(s) refused'):format(spoofed),
+        -- NOT `MISSING`. That severity means "something this resource needs is
+        -- not there", and a refused forgery is a detected ATTACK -- the one
+        -- state in this report that is not an install fault. It borrows the
+        -- wrong word and reads as a missing dependency.
+        line(env, 'DEGRADED', 'event authority',
+            ('%d forged event source(s) refused'):format(spoofed),
             [[a client sent an event naming somebody else's source. Each one was refused and the network
             source was used instead. Nothing was granted, but it is worth knowing which resource or cheat
             produced it -- the console line printed on the first one names the event]])

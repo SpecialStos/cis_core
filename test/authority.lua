@@ -152,14 +152,30 @@ check(#printed == 1, 'a flood of forgeries still logs only the first one')
 check(CisAuthority.spoofed >= 23, 'and every one of them is still counted')
 
 -- ============================================================ mixed payloads
--- The payload is whatever a client sent, which is any type at all.
+-- The payload is whatever a client sent, which is any type at all -- and the
+-- ONLY one of these is a forgery.
+--
+-- A forgery is a NUMBER naming somebody else. A string, a boolean or a table
+-- names nobody, so nothing was forged; they are answered with the sender and
+-- counted separately. Getting this backwards made the counter forgeable by
+-- anyone with a zero-byte event, and the doctor reported the inflation as
+-- clients forging sources -- which is the one number here that is supposed to
+-- mean "a cheat menu did this".
 _G.source = 1
 local before3 = CisAuthority.spoofed
-for _, junk in ipairs({ '9', 9.5, true, {} }) do
+local beforeAnon = CisAuthority.anonymous
+
+local junkPayloads = { '9', 9.5, true, {} }
+for _, junk in ipairs(junkPayloads) do
     local r = CisAuthority.resolveSource(junk, 'test')
     check(r == 1, ('a %s payload gets the network source'):format(type(junk)))
 end
-check(CisAuthority.spoofed == before3 + 4, 'and a payload of the wrong type is counted as a forgery too')
+
+-- 9.5 is the only one of the four that named a number.
+check(CisAuthority.spoofed == before3 + 1,
+    'only a NUMERIC payload that differs counts as a forgery')
+check(CisAuthority.anonymous == beforeAnon + 3,
+    'and the other three are counted as events that named nobody')
 
 -- A nil payload from a client is a forgery, not an absence: the client DID send
 -- an event, and the only player it could have been about is itself.

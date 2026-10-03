@@ -138,9 +138,26 @@ end
 check(publishedToOthers == 0,
     ('nothing was published about a player the sender was not (%d did)'):format(publishedToOthers))
 
--- And a forged source is still counted, so an operator sees it.
+-- THE TWO COUNTS ARE SEPARATE, and that is the finding.
+--
+-- A sweep like this one sends every event with no source at all, which is NOT
+-- a forgery: nothing was named, and the sender's own source was used. If that
+-- incremented `spoofed` then anyone could drive the counter -- the one number
+-- meant to detect a cheat menu -- with a zero-byte event, and the doctor would
+-- tell an operator that clients are forging sources when they are not.
 check(CisAuthority.spoofed > 0,
     ('forged sources are counted rather than silently absorbed (%d)'):format(CisAuthority.spoofed))
+check(CisAuthority.anonymous > 0,
+    ('and events sent with no source are counted separately (%d)'):format(CisAuthority.anonymous))
+
+-- A zero-byte event from a client must NOT move the forgery count. This is the
+-- exploit in one line.
+local spoofBefore = CisAuthority.spoofed
+local anonBefore = CisAuthority.anonymous
+Env.triggerNet('QBCore:Server:OnJobUpdate', 1)
+check(CisAuthority.spoofed == spoofBefore,
+    'a client event carrying no source is not counted as a forgery')
+check(CisAuthority.anonymous == anonBefore + 1, 'it is counted as anonymous instead')
 
 -- --------------------------------------------------------- the big one
 -- A payload large enough to be worth sending. This is the shape that turns a
