@@ -55,7 +55,31 @@ frameworks. `cis_core_doctor` prints every authorised entry that is not
 installed, so a stale entry is visible rather than latent. **Delete the entries
 you do not have.**
 
-### 1.3 The operator's own configuration — the weakest link, by design
+### 1.3 The event payload — trusted only when there is nobody to contradict it
+
+An event payload is chosen by whoever sent the event, and in FiveM that includes
+the player. `esx:playerLoaded` is not an ESX event; it is a name a player can
+type.
+
+`server/authority.lua` resolves who an event is really about:
+
+| `source` | Meaning | Rule |
+|---|---|---|
+| `0` | the framework triggered its own event from server code | the payload is believed — there is no networked sender to contradict it |
+| a player id | a **client** triggered it | the payload may name nobody but the player who sent it |
+
+A forged source is refused, the network source is used instead, the event is
+counted, and `cis_core_doctor` reports the count as `MISSING`. The log line
+prints **once per boot**, because a resource that logs one line per forged event
+hands an attacker a way to fill an operator's console.
+
+The result is not "refuse the event": a player stays able to do this to
+*themselves*, which is harmless and true, and is unable to do it to anybody
+else. Refusing outright would break every framework whose event is legitimately
+triggered from the client, which is most of them, in exchange for a stricter
+rule nobody asked for.
+
+### 1.4 The operator's own configuration — the weakest link, by design
 
 `configs/` is operator-authored and it is load-bearing. There is no signature,
 no schema file the operator cannot edit, and no way to tell a hand-edited config

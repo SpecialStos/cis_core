@@ -180,14 +180,20 @@ function CisState.set(ownerName, key, value)
         return false, ('%s (key %q)'):format(sizeWhy, key)
     end
 
-    -- An upsert, not an insert-then-update. Two round trips means a window where
-    -- the row does not exist and a concurrent reader sees nothing, and the only
-    -- way to notice is to lose a write.
+    -- An upsert, not an insert-then-update.
     --
-    -- MySQL's `ON DUPLICATE KEY UPDATE` is deliberately not used: it is MySQL
-    -- syntax, and cis_core documents MongoDB as a supported driver, where the
-    -- equivalent does not exist. The two-branch form below works on both, and the
-    -- second branch is the one that is actually reached.
+    -- MySQL's `ON DUPLICATE KEY UPDATE` would make this one round trip, and it is
+    -- deliberately not used: it is MySQL syntax, and cis_core documents MongoDB
+    -- as a supported driver, where the equivalent does not exist. The two-branch
+    -- form works on both drivers, at the cost of a read before the write.
+    --
+    -- That cost is a real trade and it is stated rather than waved at. Between
+    -- the SELECT and the write another thread can also write the same key, so two
+    -- concurrent `StateSet` calls for one key end as last-write-wins rather than
+    -- one being rejected. For a key/value store that is the correct semantic --
+    -- there is no increment here and nothing is lost that either caller did not
+    -- also intend to overwrite. It would NOT be correct for a counter, which is
+    -- exactly why counters belong in a product's own schema.
     local now = os.time()
     local existing = libs():DbSingle(
         ('SELECT k FROM %s WHERE owner = ? AND k = ?'):format(TABLE), { ownerName, key })

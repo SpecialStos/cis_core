@@ -76,6 +76,16 @@ state the roadmap has been asking for since it was written.
 
 ### Fixed
 
+- **[SECURITY] A client could make another player receive a job they did not
+  have.** Every server-side handler read the player source out of the *event
+  payload*, and in FiveM a client can `TriggerServerEvent` with any name and any
+  payload — so `esx:playerLoaded` was not an ESX event, it was a name a player
+  could type. `PublishJobUpdate` ends in
+  `TriggerClientEvent('cis_libs:jobUpdated', src, …)`, so a client naming
+  somebody else's source made that player's client receive a job it did not
+  have — and this resource's own client stores exactly that event, so the
+  poisoned job was the platform's and not only a consumer's. Five handlers were
+  affected. See §9 of `DOCUMENTATION.md` and `SECURITY.md` §1.2.
 - **The qbx_core job path was broken.** A qbx_core `playerData` carries a
   character `name` field alongside its `job`, so one payload matched both
   accepted shapes at once. Read as `data.name and data or data.job`, such a

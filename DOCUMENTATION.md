@@ -670,6 +670,7 @@ owns it.
 | Control | What it does |
 |---|---|
 | Config validation | Every value checked for type, range and known value at boot, with the fix printed |
+| Event authority | `server/authority.lua`. A player source read out of an event payload is only believed when no networked sender can contradict it. Forgery is counted and reported by `cis_core_doctor`, logged once per boot |
 | Unknown-key detection | A key nothing reads is reported; it is otherwise invisible |
 | Namespaced state | The namespace is `GetInvokingResource()`. There is no code path in which one product names another |
 | State rules | Key and value walked before write: no function, no cycle, no depth bomb, no unbounded table |
@@ -722,6 +723,7 @@ npm run test:all  # + syntax check + the api contract self-test
 | `normalize` | every shape reading in §3, on every payload shape in the wild |
 | `state` | the value rules: JSON types, cycles, depth, width, size |
 | `config` | the validator, including every malformed input that must not raise |
+| `authority` | the event-authority rule, with `source`, `GetMaxPlayers` and `GetPlayerName` stubbed and the rule itself not |
 
 `api.lua` at the resource root is the machine-readable contract. It is plain
 data, not a script, and `tools/validate-api.js` fails if it ever drifts from
@@ -751,6 +753,7 @@ framework/
   framework_client.lua  the same surface, client side
 server/
   validate_config.lua   the boot-time validator. pure
+  authority.lua         who an event is really about
   state_rules.lua       the state value rules. pure
   inventory.lua         the inventory service and its capability table
   migrations.lua        the runner, cis_migrations, and cis_core's own schema
