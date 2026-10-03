@@ -54,18 +54,51 @@ local warned = false
 
 --- Is this a real player who is currently connected?
 ---
---- The bounds check is not decoration. `source` is set by the runtime, but the
---- helpers below are also fed payload values, and a payload is any type at all
---- -- including a table, a string, and a number far larger than the server has
---- slots.
+--- THE TWO CHECKS ARE NOT EQUAL, and which one is load-bearing matters.
+---
+--- `GetPlayerName(src) ~= nil` is the gate. It is verified behaviour: the
+--- server-side binding is a client function with a null default, so a
+--- disconnected source answers nil and only a connected one answers a string.
+---
+--- `GetMaxPlayers()` is a REFINEMENT, not the gate -- and it is deliberately
+--- not required. It could not be verified to exist on every build, and a check
+--- that raises turns every event handler in this resource into a crash. So it
+--- is probed, and its absence costs a bounds check rather than correctness.
+---
+--- The order is chosen so that the one check that is certain runs first on the
+--- common path, and so that a failure anywhere FAILS CLOSED. An error here must
+--- answer "not a player": the other answer is to treat an unknown sender as
+--- trusted, which is the one thing this file exists to prevent.
+---
+--- `source` itself is handled by the `type(value) ~= 'number'` guard above it,
+--- and that guard is doing more work than it looks. The runtime sets `source`
+--- to the player id for a net event, to a number for an internal-net event,
+--- and to an EMPTY STRING for a server-side TriggerEvent -- not 0 and not nil.
+--- A string source therefore fails the type check, lands on the server-side
+--- branch of resolveSource, and has its payload believed. That is the intended
+--- answer for a framework calling its own event.
 function CisAuthority.isPlayer(value)
     if type(value) ~= 'number' then
         return false
     end
-    if value <= 0 or value > GetMaxPlayers() then
+    if value <= 0 then
         return false
     end
-    return GetPlayerName(value) ~= nil
+
+    local named
+    local ok = pcall(function()
+        named = GetPlayerName(value)
+    end)
+    if not ok or named == nil then
+        return false
+    end
+
+    local gotMax, max = pcall(GetMaxPlayers)
+    if gotMax and type(max) == 'number' and max > 0 and value > max then
+        return false
+    end
+
+    return true
 end
 
 --- Resolve who an event is really about.

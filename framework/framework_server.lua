@@ -63,35 +63,36 @@ local function loadCustomAdapter()
     return nil
 end
 
--- Existence probe for an export. Calling a missing export raises; calling a
--- present one with a deliberately bad argument does not, so the pcall result
--- is an honest answer rather than a guess.
--- Existence probe for an export: does the resource publish this name?
+-- THERE USED TO BE AN EXPORT-EXISTENCE PROBE HERE, AND IT IS NOW DEAD CODE.
 --
--- It RESOLVES the reference rather than calling it. Calling to test is wrong:
--- `qbx_core:GetPlayer(0)` raises on an invalid source, and a raise inside a
--- pcall is indistinguishable from "the export does not exist" -- so a perfectly
--- good server was reported as having no framework at all. Measured, not
--- assumed: that is exactly what the first AUTO run on a live qbx_core did.
+-- `probeExport(resource, exportName)` resolved an export reference instead of
+-- calling it, because calling to test is wrong -- `qbx_core:GetPlayer(0)` raises
+-- on an invalid source and a raise inside a pcall is indistinguishable from "the
+-- export does not exist". That reasoning was sound and the function was correct
+-- in the way that mattered: `type(fn) == 'function'` returns true for every real
+-- export, because the runtime hands you a closure.
 --
--- A returned function arrives as a callable reference table, so `type() ==
--- 'function'` is the wrong test and rejects an export that IS present. Both
--- shapes count; nil means the name is not published.
-local function probeExport(resource, exportName)
-    if type(exportName) ~= 'string' or exportName == '' then
-        return true
-    end
-    local ok, fn = pcall(function()
-        return exports[resource][exportName]
-    end)
-    if not ok or fn == nil then
-        return false
-    end
-    if type(fn) == 'function' then
-        return true
-    end
-    return type(fn) == 'table' and rawget(fn, '__cfx_functionReference') ~= nil
-end
+-- It became dead when detection moved to `exports['cis_libs']:DetectFramework`,
+-- which probes on its own side and returns a result. It was passed in as an
+-- argument to the old inline `CisDetect.framework(...)` call that no longer
+-- exists. Nothing referenced it, and nothing noticed.
+--
+-- Two reasons to delete it rather than keep it "just in case":
+--
+--   1. It duplicated a rule cis_libs owns. Two existence probes in the platform
+--      is two that can disagree, and this one would only ever be exercised on
+--      a code path no longer taken.
+--   2. Its last two lines were WRONG. `rawget(fn, '__cfx_functionReference')`
+--      where `fn` is a function always answers nil -- `rawget` on a function
+--      returns nil -- so the "both shapes count" fallback could never fire. The
+--      comment claimed a returned export arrives as a reference TABLE; against
+--      the CfxLua scheduler it arrives as a function. Harmless, because the
+--      line above it always returned first, and exactly the kind of thing that
+--      becomes load-bearing the day someone deletes the line above it.
+--
+-- If a caller ever needs to know whether a THIRD-PARTY resource publishes an
+-- export, ask cis_libs, or read the target's manifest metadata. Do not
+-- reintroduce a probe here.
 
 local function detect()
     local configured = string.upper((Config and Config.Framework and Config.Framework.Type) or 'AUTO')

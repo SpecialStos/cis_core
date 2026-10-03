@@ -66,6 +66,36 @@ for _, junk in ipairs({ '5', {}, true, print }) do
     check(CisAuthority.isPlayer(junk) == false, ('a %s is not a player'):format(type(junk)))
 end
 
+-- ============================================ the checks this file leans on
+-- The gate is `GetPlayerName(src) ~= nil`. `GetMaxPlayers()` is a refinement,
+-- and it could not be verified to exist on every build -- so a check that
+-- RAISES must cost a bounds check, never the whole function. Both cases below
+-- were live risks before the hardening.
+local realMaxPlayers = GetMaxPlayers
+
+function GetMaxPlayers()
+    error('this build has no GetMaxPlayers', 0)
+end
+check(CisAuthority.isPlayer(1) == true,
+    'a missing GetMaxPlayers costs the bounds check, not the answer')
+check(CisAuthority.isPlayer(7) == false,
+    'and a disconnected player is still refused without it')
+
+function GetMaxPlayers()
+    return 'not a number'
+end
+check(CisAuthority.isPlayer(1) == true, 'a GetMaxPlayers that answers nonsense is ignored too')
+GetMaxPlayers = realMaxPlayers
+
+local realPlayerName = GetPlayerName
+function GetPlayerName()
+    error('this build raises here', 0)
+end
+check(CisAuthority.isPlayer(1) == false,
+    'a GetPlayerName that RAISES fails closed -- an unknown sender is never trusted')
+GetPlayerName = realPlayerName
+check(CisAuthority.isPlayer(1) == true, 'and the gate works again once it stops raising')
+
 -- ================================================ the server-side trigger case
 -- `source == 0` means the framework called its own event. There is no networked
 -- sender to contradict the payload, so the payload is believed -- this is the
