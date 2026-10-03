@@ -92,7 +92,7 @@ return {
         -- -------------------------------------------------------- migrations
         Migrate = {
             since = '1.0.0', ['until'] = false, stable = true, deprecated = false,
-            use = 'exports["cis_core"]:Migrate(owner, { { id = "001_x", statements = { ... } } }). Idempotent by id. Applies in numeric order then alphabetical',
+            use = 'exports["cis_core"]:Migrate(owner, { { id = "001_x", statements = { ... } } }). Idempotent by id. Applies in numeric order then alphabetical. GATED: the calling resource must be on Security.AuthorizedResources, because this executes arbitrary SQL against the platform connection with no namespace and no ownership check',
             realm = 'server',
             signature = '(owner, list)',
         },

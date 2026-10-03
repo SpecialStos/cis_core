@@ -156,5 +156,33 @@ for _, ns in ipairs(summary.namespaces) do
 end
 check(summary.available == true, 'and the summary says whether the store is usable')
 
+-- ------------------------------------------------- who may run Migrate
+-- Migrate executes ARBITRARY SQL against the platform's connection, with no
+-- namespace and no ownership check: the ledger records the `owner` string the
+-- caller CHOSE to pass, which is data, not proof. So it is gated on the
+-- allow-list, and this is the assertion that the gate is a gate.
+Security = { AuthorizedResources = { 'cis_core', 'cis_keys' } }
+
+Env.invokingAs('some_third_party')
+local refused, refusal = exports['cis_core']:Migrate('some_third_party', {
+    { id = '001_evil', statements = { 'DROP TABLE cis_state' } },
+})
+check(refused == false, 'Migrate is refused for a resource that is not on the allow-list')
+check(type(refusal) == 'table' and type(refusal.error) == 'string'
+    and refusal.error:find('AuthorizedResources', 1, true) ~= nil,
+    'and the refusal names the setting that would fix it')
+
+Env.invokingAs('cis_keys')
+local allowed = exports['cis_core']:Migrate('cis_keys', {
+    { id = '001_probe', statements = { 'CREATE TABLE IF NOT EXISTS probe (id INT)' } },
+})
+check(allowed == true, 'and accepted for one that is')
+
+-- The console. There is no resource behind it, so there is no name to match.
+Env.invokingAs('')
+check(exports['cis_core']:Migrate('console', {
+    { id = '001_console', statements = { 'SELECT 1' } },
+}) == false, 'and refused from the console, which has no resource behind it')
+
 Test.report()
 Test.raiseIfFailed()

@@ -380,6 +380,14 @@ with when it was applied and how long it took.
 the platform never grows a table that belongs to one product and gets dropped
 when that product is uninstalled.
 
+**`Migrate` is gated on `Security.AuthorizedResources`.** Every other export in
+this resource is namespaced — `StateSet` writes one key in the caller's own
+namespace — but `Migrate` executes arbitrary SQL against the platform's
+connection with no namespace and no ownership check, and the ledger records the
+`owner` string the caller *chose* to pass, which is data rather than proof. A
+resource with no database rights of its own could otherwise read and write
+anything the connection reaches. The refusal names the setting to add.
+
 ```lua
 exports['cis_core']:Migrate('my_resource', {
     { id = '001_shops',   statements = { 'CREATE TABLE shops (id INT)' } },

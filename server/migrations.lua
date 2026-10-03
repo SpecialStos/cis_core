@@ -216,7 +216,55 @@ end
 --- is a product that cannot work, and it needs to be able to say so and carry
 --- on booting -- a raised error here would take the whole resource down and
 --- leave the operator with a stack trace instead of a sentence.
+--- Is the CALLER on Security.AuthorizedResources?
+---
+--- This is the same posture cis_libs applies to its own mutating exports, and
+--- it exists here for a specific reason: **Migrate runs arbitrary SQL.**
+---
+--- Every other export in this resource is namespaced. StateSet writes one key in
+--- the caller's own namespace; the framework capability returns the caller's
+--- own player object. Migrate takes a LIST OF SQL STRINGS and executes them
+--- against the platform's connection, with no namespace, no ownership check and
+--- no way to tell afterwards which resource issued them -- the ledger records
+--- the `owner` string the caller CHOSE to pass, which is data, not proof.
+---
+--- So a resource with no database rights of its own could call this and read
+--- and write anything the connection can reach. That is a real escalation, and
+--- it is cheap to close: the caller has to be a name the operator wrote down.
+---
+--- NOT applied to the state exports, deliberately. Those are namespaced by
+--- construction -- a caller can only ever reach its own rows -- and gating them
+--- would mean every product that wants to store a setting had to be added to a
+--- config file first, which is exactly the friction the state store exists to
+--- remove. Arbitrary cross-namespace SQL is a different thing from writing your
+--- own key.
+local function invokingAllowed()
+    local resource = GetInvokingResource()
+    if type(resource) ~= 'string' or resource == '' then
+        return false, 'this call came from the console, which has no resource behind it'
+    end
+    local list = Security and Security.AuthorizedResources
+    if type(list) ~= 'table' then
+        return false, 'Security.AuthorizedResources is not a table in configs/security_config.lua'
+    end
+    for _, name in ipairs(list) do
+        if name == resource then
+            return true
+        end
+    end
+    return false, ('%s is not on Security.AuthorizedResources, and Migrate runs arbitrary SQL: '
+        .. 'add it to configs/security_config.lua if you trust it with your database'):format(resource)
+end
+
 exports('Migrate', function(owner, list)
+    local allowed, why = invokingAllowed()
+    if not allowed then
+        -- Refused, and said so. Not a silent no-op: a product whose schema did
+        -- not apply will boot and behave as though it did, and the operator
+        -- needs this line to know why.
+        print(('[cis_core] migration from %s REFUSED: %s'):format(tostring(owner), tostring(why)))
+        return false, { error = tostring(why) }
+    end
     return CisMigrationRunner.run(owner, list)
 end)
 

@@ -76,6 +76,19 @@ state the roadmap has been asking for since it was written.
 
 ### Fixed
 
+- **[SECURITY] `Migrate` ran arbitrary SQL for any resource that could call
+  it.** Every other export in this resource is namespaced: `StateSet` writes one
+  key in the caller's own namespace, and the framework capability returns the
+  caller's own player object. `Migrate` takes a LIST OF SQL STRINGS and executes
+  them against the platform's connection with no namespace and no ownership
+  check -- and the ledger records the `owner` string the caller CHOSE to pass,
+  which is data, not proof. So a resource with no database rights of its own
+  could read and write anything the connection reaches. It is now gated on
+  `Security.AuthorizedResources`, with a refusal that names the setting.
+  Deliberately NOT applied to the state exports: those are namespaced by
+  construction, and gating them would mean every product that wants to store a
+  setting had to be added to a config file first, which is the friction the
+  state store exists to remove.
 - **The ESX-LEGACY fallback could take the boot thread down.** ESX 1.10.10
   turned `esx:getSharedObject` into an error(): its handler is literally
   `function() error("...this event no longer exists!") end`. The fallback
