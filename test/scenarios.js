@@ -34,6 +34,10 @@ const dir = path.join(__dirname, 'scenarios')
 // Loaded into EVERY state, before the scenario. The scenario decides what the
 // world looks like; these decide what is available to look at it with.
 const DEPS = [
+  // Defines CoreLibs, which is how the CLIENT half reads its config. A
+  // scenario loading framework_client.lua without it fails on the first line of
+  // detect() with "attempt to index a nil value (global 'CoreLibs')".
+  'shared/cis.lua',
   'shared/normalize.lua',
   // The migration runner is loaded by a scenario that needs it, but its PURE
   // half is shared and every scenario gets it: it defines CisMigrations, and a

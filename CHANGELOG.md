@@ -17,6 +17,12 @@ state the roadmap has been asking for since it was written.
 
 ### Added
 
+- **`Framework.IsLoaded()` on the client.** `cis_libs` declares `IsLoaded` on
+  the `framework` slot without a realm restriction, and its registry checks
+  every declared method against the provider in the realm being asked about — so
+  a client capability without it reads as a bridge missing a method it is
+  supposed to have. The server half always had it; the gap was invisible from
+  the server because the two capabilities are registered separately.
 - **`Security.AdminGroup`** — the group or ACE permission a player needs to run
   `cis_core_info` / `cis_core_doctor` in game. Default `"admin"`, which QBCore
   and qbx_core both grant. ESX's superuser group is `superadmin`, which is not

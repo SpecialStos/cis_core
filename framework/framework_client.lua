@@ -204,6 +204,21 @@ function Framework.GetPlayerJob()
     return PlayerJob
 end
 
+--- Has the client bridge finished booting?
+---
+--- Present on the client because cis_libs declares `IsLoaded` on the `framework`
+--- slot WITHOUT a realm restriction, and its registry checks every declared
+--- method against the provider in the realm it is asking about. A client
+--- capability without it reads as a bridge missing a method it is supposed to
+-- have, and `cis_doctor` on the client says so.
+---
+--- The server half has always had this; the client half did not, and the gap is
+--- invisible from the server because the two capabilities are registered
+--- separately.
+function Framework.IsLoaded()
+    return FrameworkLoaded == true
+end
+
 -- The two handlers the framework's own client events are registered against.
 --
 -- They were REFERENCED and never defined. Every `RegisterNetEvent` below passed

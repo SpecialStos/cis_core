@@ -146,6 +146,23 @@ function _G.CreateThread(fn)
     return #env.threads
 end
 
+-- ------------------------------------------------- client-realm natives
+-- Only the ones the client half actually calls. A stub that returns a plausible
+-- value for a native that does not exist is how a test ends up passing against
+-- a code path the game never takes, so the list is the call sites and nothing
+-- else.
+_G.PlayerPedId = function() return 1 end
+_G.PlayerId = function() return 0 end
+_G.BeginTextCommandThefeedPost = function() end
+_G.AddTextComponentSubstringPlayerName = function() end
+_G.EndTextComponentThefeedPostTicker = function() end
+_G.SetEntityHeading = function() end
+_G.SetVehicleOnGroundProperly = function() end
+_G.SetModelAsNoLongerNeeded = function() end
+_G.CreateVehicle = function(model, x, y, z, heading) return 42 end
+_G.RequestModelTimeout = function(model, ms) return true, model end
+_G.DrawText3D = function() end
+
 function _G.RegisterCommand(name, handler, restricted)
   env.commands[#env.commands + 1] = { name = name, handler = handler, restricted = restricted }
 end

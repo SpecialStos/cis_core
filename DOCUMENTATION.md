@@ -178,6 +178,7 @@ Registered as `CisCoreFramework`, plus `CisCoreFrameworkNotify`.
 |---|---|
 | `GetPlayerData()` | `nil` until the character is loaded. Normal on a fresh connect. |
 | `GetPlayerJob()` | The client's cached copy. Valid only while a character is loaded. |
+| `IsLoaded()` | Whether the client bridge finished booting. Declared by `cis_libs` on the `framework` slot for **both** realms, so the client capability carries it too. |
 | `ShowNotification(message, kind)` | Falls back to the native text feed. |
 | `TriggerServerCallback(name, cb, ...)` | Routes through `cis_libs`' callback layer. |
 | `HasItem(item, amount)` | **A hint.** A client-side view, not authority. |
