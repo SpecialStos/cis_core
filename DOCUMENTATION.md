@@ -645,12 +645,19 @@ is "HasItem always says no", never a crash.
 | `QBCore:Client:OnPlayerLoaded` | QBCore | client job cache |
 | `QBCore:Client:OnJobUpdate` | QBCore | client job cache |
 | `QBCore:Player:SetPlayerData` | QBCore | client inventory counts |
-| `qbx_core:client:playerLoaded` | qbx_core | client job cache |
-| `qbx_core:client:onJobUpdate` | qbx_core | client job cache |
 | `cis_libs:jobUpdated` | `cis_libs` | client job cache |
 | `cis_libs:playerLoaded` | `cis_libs` | client job cache |
 | `cis_libs:client:inventory` | `cis_libs` | client inventory counts |
 | `ox_inventory:openedInventory` | ox_inventory | server inventory re-push |
+
+**qbx_core publishes no `qbx_core:*` player-lifecycle events.** Its entire
+per-player surface is under the `QBCore:` prefix, deliberately, for
+compatibility. The `qbx_core:*` namespace is a job and gang *definition*
+registry: `qbx_core:client:onJobUpdate` is broadcast to every client as
+`(jobName, definition)` whenever a job definition is created or edited at
+runtime, and it is not a player's job change. `qbx_core:client:playerLoaded`
+does not exist at all. Both were declared here until 1.1.0; neither is
+listenable for a job.
 
 The third-party names are declared **here** because this is the resource that
 knows which framework is installed, so this is where an operator looks to see

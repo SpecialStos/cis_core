@@ -198,14 +198,16 @@ return {
             since = '1.0.0',
             payload = 'QBCore to client: ({ items }). Refreshes the client inventory counts',
         },
-        ['qbx_core:client:playerLoaded'] = {
-            since = '1.0.0',
-            payload = 'qbx_core to client: (playerData)',
-        },
-        ['qbx_core:client:onJobUpdate'] = {
-            since = '1.0.0',
-            payload = 'qbx_core to client: (job)',
-        },
+        -- NOT LISTED: qbx_core:client:playerLoaded and qbx_core:client:onJobUpdate.
+        -- Both were declared here until 1.1.0 and both were wrong.
+        --   qbx_core:client:playerLoaded does not exist in any qbx_core release.
+        --   qbx_core:client:onJobUpdate is the job DEFINITION registry event,
+        --     broadcast to every client as (jobName, definition) whenever a job
+        --     definition changes -- not a player's job change. qbx_core's whole
+        --     player-lifecycle surface is under the `QBCore:` prefix, which is
+        --     what this resource listens to.
+        -- Declaring a name here is a claim that this resource depends on it, and
+        -- both claims were checkable and false. See framework_client.lua.
         -- cis_libs-owned, consumed here. Listed so the dependency is visible.
         ['cis_libs:jobUpdated'] = {
             since = '2.0.0',

@@ -209,15 +209,20 @@ end
 -- that is not one. The frameworks differ in the shape they send, so each reads
 -- its own argument rather than assuming a shared one:
 --
---   esx:setJob(job, lastJob)                      -> the job itself
---   QBCore:Client:OnJobUpdate(job)                -> the job itself
---   qbx_core:client:onJobUpdate(job)              -> the job itself
---   esx:playerLoaded(playerData, isNew, skin)     -> playerData, job under .job
---   QBCore:Client:OnPlayerLoaded(playerData)       -> playerData, job under .job
---   qbx_core:client:playerLoaded(playerData)       -> playerData, job under .job
+--   esx:setJob(job, lastJob)                    -> the job itself
+--   QBCore:Client:OnJobUpdate(job)              -> the job itself
+--   esx:playerLoaded(playerData, isNew, skin)   -> playerData, job under .job
+--   QBCore:Client:OnPlayerLoaded(playerData)    -> playerData, job under .job
 --
 -- Taking only the first shape would have made every playerLoaded event a no-op,
 -- which is the same bug the nil handlers were.
+--
+-- THE `qbx_core:` LINES THAT WERE HERE ARE GONE, and the reason is at the
+-- registration site below: neither of those names is a player's job change, and
+-- one of them does not exist. The two remaining `QBCore:` names are what qbx_core
+-- itself fires -- see the comment there before adding any `qbx_core:` listener,
+-- because that namespace is a job and gang DEFINITION registry, not a
+-- player-lifecycle one, and a listener added there looks reasonable and is not.
 --
 -- The shape reading itself is `CisNormalize.jobFromPayload`, in
 -- shared/normalize.lua, because it is the decision this file's header says was
@@ -388,19 +393,42 @@ CreateThread(function()
     if playerData and playerData.job then
         PlayerJob = playerData.job
     end
-    -- BOTH ecosystems' events are registered for QBOX, not just the qbx_core
-    -- pair. qbx_core still fires the QBCore events for compatibility, and a
-    -- client that listened only for `qbx_core:client:*` would work on a current
-    -- build and silently stop updating on a transitional one. Registering
-    -- four listeners for one job is cheaper than the bug.
+    -- THE `QBCore:` NAMES ARE THE REAL ONES, AND THAT IS NOT A FALLBACK.
     --
-    -- The whole block is unreachable on a qbx_core that removed GetCoreObject,
-    -- because provider is 'NONE' by then. See the header.
+    -- This used to register four listeners per job: the two `QBCore:` names
+    -- plus `qbx_core:client:playerLoaded` and `qbx_core:client:onJobUpdate`, on
+    -- the reasoning that "qbx_core might publish its own names and a client
+    -- listening only for one ecosystem would break on the other". The reasoning
+    -- was wrong, and it cost two of the four. Both were checked against qbx_core
+    -- v1.24.0 source rather than assumed:
+    --
+    --   qbx_core:client:playerLoaded   DOES NOT EXIST. Not deprecated, not
+    --       renamed -- absent from every tagged release and from main. The
+    --       per-player loaded event is `QBCore:Client:OnPlayerLoaded`, which
+    --       qbx_core still fires. This listener was dead the day it was written.
+    --
+    --   qbx_core:client:onJobUpdate    EXISTS, AND IS NOT A PLAYER'S JOB
+    --       CHANGE. It is the JOB DEFINITION REGISTRY event: server/groups.lua
+    --       does `TriggerClientEvent('qbx_core:client:onJobUpdate', -1, name,
+    --       jobs[name])` -- broadcast to EVERY client, carrying (jobName,
+    --       definition), every time a job definition is created or edited at
+    --       runtime. Note the lowercase `on`. `QBCore:Client:OnJobUpdate` is the
+    --       per-player event, and conflating the two is the whole trap.
+    --
+    --       Binding a player-job handler to it was harmless only by accident of
+    --       argument order: the first argument is a string, so jobFromPayload
+    --       rejected it and returned nil. Reorder it upstream and this stores a
+    --       job DEFINITION as the player's job -- and a definition table has a
+    --       `name` field, so nothing would error. Today's cost is a listener
+    --       running on every client for every job admin command, correctly doing
+    --       nothing. Tomorrow's is a client that believes it is a job.
+    --
+    -- So: two listeners, both real, both earning their place. qbx_core's entire
+    -- player-lifecycle surface sits under the `QBCore:` prefix, and that is a
+    -- deliberate compatibility design rather than a transitional one.
     if provider == 'QBCORE' or provider == 'QBOX' then
         RegisterNetEvent('QBCore:Client:OnJobUpdate', Framework.UpdatePlayerJob)
         RegisterNetEvent('QBCore:Client:OnPlayerLoaded', Framework.OnPlayerLoaded)
-        RegisterNetEvent('qbx_core:client:playerLoaded', Framework.OnPlayerLoaded)
-        RegisterNetEvent('qbx_core:client:onJobUpdate', Framework.UpdatePlayerJob)
     elseif provider == 'ESX' or provider == 'ESX-LEGACY' then
         RegisterNetEvent('esx:setJob', Framework.UpdatePlayerJob)
         RegisterNetEvent('esx:playerLoaded', Framework.OnPlayerLoaded)

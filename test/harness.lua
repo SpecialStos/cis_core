@@ -63,3 +63,16 @@ function Test.totals()
     end
     return passed, failed, suites
 end
+
+--- Raise when anything failed.
+---
+--- For the scenario runner, which decides pass/fail from whether the file LOADED
+--- rather than by parsing printed output. A scenario that quietly finished with
+--- six failed assertions and a clean status would report as a pass, which is
+--- worse than not running it at all.
+function Test.raiseIfFailed()
+    local passed, failed = Test.totals()
+    if failed > 0 then
+        error(('%d of %d assertions failed'):format(failed, passed + failed), 0)
+    end
+end

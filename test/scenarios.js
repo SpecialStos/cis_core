@@ -1,0 +1,78 @@
+'use strict'
+
+// Runs each file in test/scenarios/ in its OWN Lua state.
+//
+// WHY A SEPARATE RUNNER AND A SEPARATE STATE
+//
+// The framework bridge decides everything in a file-local `detect()`, called
+// once from a CreateThread. Testing it against four frameworks therefore means
+// running `detect()` four times against four different worlds -- and in one
+// shared state the first scenario's globals, its registered capability and its
+// fake exports all survive into the next one. The result is a suite that passes
+// in an order nobody would run it in and fails in a real one.
+//
+// A fresh state per scenario is the only arrangement where "qbx_core is running
+// in this test and not in that one" is true rather than approximately true.
+//
+// Each scenario is responsible for its own verdict: it ends with Test.report()
+// and Test.raiseIfFailed(), so the exit code is the LOAD status. Nothing here
+// parses printed output, because a suite that greps its own console is a suite
+// that can be satisfied by printing the right words.
+
+const fs = require('fs')
+const path = require('path')
+const fengari = require('fengari')
+
+const lua = fengari.lua
+const lauxlib = fengari.lauxlib
+const lualib = fengari.lualib
+const toLua = fengari.to_luastring
+
+const root = path.join(__dirname, '..')
+const dir = path.join(__dirname, 'scenarios')
+
+// Loaded into EVERY state, before the scenario. The scenario decides what the
+// world looks like; these decide what is available to look at it with.
+const DEPS = [
+  'shared/normalize.lua',
+  'server/authority.lua',
+  'test/harness.lua',
+  'test/framework_env.lua',
+]
+
+const scenarios = fs
+  .readdirSync(dir)
+  .filter((f) => f.endsWith('.lua'))
+  .sort()
+
+if (scenarios.length === 0) {
+  console.error('no scenarios found; the framework suite would be vacuous')
+  process.exit(1)
+}
+
+let failedScenarios = 0
+
+for (const name of scenarios) {
+  const L = lauxlib.luaL_newstate()
+  lualib.luaL_openlibs(L)
+
+  const load = (rel) => {
+    const status = lauxlib.luaL_dostring(L, toLua(fs.readFileSync(path.join(root, rel), 'utf8')))
+    if (status !== lua.LUA_OK) {
+      throw new Error(lua.lua_tojsstring(L, -1))
+    }
+  }
+
+  try {
+    for (const dep of DEPS) load(dep)
+    load(path.join('test', 'scenarios', name))
+  } catch (err) {
+    failedScenarios += 1
+    console.log(`  FAIL  scenarios/${name}: ${err.message}`)
+    continue
+  }
+  console.log(`  PASS  scenarios/${name}`)
+}
+
+console.log(`scenarios=${scenarios.length} failed=${failedScenarios}`)
+if (failedScenarios > 0) process.exit(1)

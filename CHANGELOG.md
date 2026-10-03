@@ -86,6 +86,16 @@ state the roadmap has been asking for since it was written.
   have — and this resource's own client stores exactly that event, so the
   poisoned job was the platform's and not only a consumer's. Five handlers were
   affected. See §9 of `DOCUMENTATION.md` and `SECURITY.md` §1.2.
+- **[SECURITY] The client listened to a qbx_core event that is not a player's
+  job change.** `qbx_core:client:onJobUpdate` is the job *definition* registry
+  event — `server/groups.lua` broadcasts it to every client as
+  `(jobName, definition)` on every job-definition edit. It was bound to the
+  player-job handler, which was harmless only because the first argument is a
+  string and the shape reader rejected it. A job definition table has a `name`
+  field, so an upstream argument reorder would have stored a definition as the
+  player's job with nothing erroring. `qbx_core:client:playerLoaded` does not
+  exist in any qbx_core release and its listener was dead from the day it was
+  written. Both verified against qbx_core v1.24.0 source.
 - **The qbx_core job path was broken.** A qbx_core `playerData` carries a
   character `name` field alongside its `job`, so one payload matched both
   accepted shapes at once. Read as `data.name and data or data.job`, such a
