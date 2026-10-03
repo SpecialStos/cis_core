@@ -113,13 +113,27 @@ end
 ---
 --- @param payloadSource  whatever the payload claimed, of any type
 --- @param eventName      string, for the log line
+--- @param netSource      the `source` global, CAPTURED BY THE CALLER
 --- @return number|nil src   the source to act on; nil means "do nothing"
-function CisAuthority.resolveSource(payloadSource, eventName)
-    -- FiveM exposes the sender as a global inside the handler, and it is 0 for
-    -- a server-side trigger. Read through a local because `source` is also the
-    -- name of one of this resource's own helpers elsewhere, and a shadowed
-    -- global read is exactly the kind of thing that survives a rename.
-    local netSource = source
+--
+-- THE CALLER PASSES IT, and that is the point rather than a convenience.
+--
+-- `source` is only guaranteed for the SYNCHRONOUS execution of a handler: the
+-- runtime restores it when the handler yields and resets it per dispatch. A read
+-- from inside a helper reached a few frames later -- through a callback, an
+-- await, a deferred call -- sees whatever the CURRENTLY dispatching event set.
+-- That value is a number, so it passes `isPlayer`, and the branch below takes it
+-- as proof that nobody was networked.
+--
+-- So reading the global down here meant the trust-the-payload branch was
+-- reachable by any refactor that added a yield between a handler and this call.
+-- There is no live instance today -- every call site is synchronous at the top
+-- of its handler -- and the third parameter exists so that adding a yield later
+-- is a wrong argument count rather than a security hole.
+function CisAuthority.resolveSource(payloadSource, eventName, netSource)
+    -- Falls back to the global for a caller with no handler to read it in.
+    -- Every call site in this resource passes it explicitly.
+    netSource = netSource or source
 
     if not CisAuthority.isPlayer(netSource) then
         -- Server-side trigger. The framework called its own event, its payload

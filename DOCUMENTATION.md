@@ -281,6 +281,7 @@ table rather than blanking out the sections around it.
 | `Security.EventPrefix` | `"cis_libs"` | **Keep it.** Changing it moves every event name; any resource triggering them directly must change in the same edit, and the failure is silence, not an error. |
 | `Security.AuthorizedResources` | the platform roster | §4.2. |
 | `Security.DropPlayer` | **`false`** | Log only. §4.3. |
+| `Security.AdminGroup` | `"admin"` | The group or ACE permission that lets a **player** run `cis_core_info` / `cis_core_doctor` in game. Set it to `"superadmin"` on an ESX server that grants its superuser group under that name — a non-match answers false and the refusal is silence, which is correct and baffling at the same time. |
 | `Security.Debug` | `false` | Reserved, unread. Do not build on it. |
 
 ### 4.2 The allow-list
@@ -574,6 +575,18 @@ to avoid; and a platform service that refuses to serve because one optional piec
 is missing turns a config typo into an outage.
 
 ### 6.2 On demand
+
+Both commands are console-only or admin, and the group an in-game admin needs is
+`Security.AdminGroup` — `"admin"` by default. ESX's superuser group is
+`superadmin`, which is not the same string, so an ESX server that grants
+`superadmin` out of the box cannot run these in game until that line is
+changed. A non-match answers false and **prints nothing**.
+
+Both commands are console-only or admin, and the group an in-game admin needs is
+`Security.AdminGroup` — `"admin"` by default. ESX's superuser group is
+`superadmin`, which is not the same string, so an ESX server that grants
+`superadmin` out of the box cannot run these in game until that line is
+changed. A non-match answers false and **prints nothing**.
 
 | Command | Prints |
 |---|---|

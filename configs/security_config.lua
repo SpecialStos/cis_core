@@ -32,6 +32,27 @@ Security = {}
 -- coexist on one server and their event sets would otherwise collide.
 Security.EventPrefix = "cis_libs"
 
+-- ------------------------------------------------------------------ WHO
+-- The framework group or ACE permission that lets a PLAYER run
+-- `cis_core_info` and `cis_core_doctor` from in game. The server console is
+-- always allowed and does not consult this at all.
+--
+-- SAFE DEFAULT: "admin", which QBCore and qbx_core both grant and ESX maps to
+-- its `admin` group.
+--
+-- IF YOU RUN ESX AND YOUR ADMIN GROUP IS CALLED SOMETHING ELSE: set it here.
+-- ESX's default group is `user` and its superuser group is `superadmin`, which
+-- is not the same string as `admin` -- so a server that grants `superadmin`
+-- could never run these in game and got SILENCE, which is the correct refusal
+-- and a baffling symptom at the same time.
+--
+--   Security.AdminGroup = "superadmin"
+--
+-- Anything that does not match answers false. A non-admin gets nothing printed,
+-- by design: a command that tells a stranger what this server runs is a command
+-- that should not exist.
+Security.AdminGroup = "admin"
+
 -- RESERVED. Nothing in this resource reads it; `Config.Printing.Debug` is the
 -- flag that is actually wired up. It is kept so an existing config keeps
 -- loading, but DO NOT BUILD ANYTHING ON IT: setting it true will not turn

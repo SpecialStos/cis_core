@@ -220,7 +220,7 @@ end
 -- "none", and the rule is not worth breaking in one file for the sake of a
 -- cheaper shape in it.
 AddEventHandler('ox_inventory:openedInventory', function(payloadSrc)
-    local src = CisAuthority.resolveSource(payloadSrc, 'ox_inventory:openedInventory')
+    local src = CisAuthority.resolveSource(payloadSrc, 'ox_inventory:openedInventory', source)
     if src then
         pushSnapshot(src)
     end

@@ -71,6 +71,20 @@ end
 -- and it could not be verified to exist on every build -- so a check that
 -- RAISES must cost a bounds check, never the whole function. Both cases below
 -- were live risks before the hardening.
+-- ============================================ the caller passes `source` explicitly
+-- The third parameter exists so that adding a yield between a handler and this
+-- call becomes a wrong argument count rather than a security hole: `source` is
+-- only guaranteed for a handler's SYNCHRONOUS execution, and a helper that read
+-- the global itself could be handed the value left behind by whatever event
+-- dispatched next.
+check(select(1, CisAuthority.resolveSource(5, 'test', 5)) == 5,
+    'an explicit networked source is accepted and resolves to itself')
+
+_G.source = 5
+check(select(1, CisAuthority.resolveSource(5, 'test')) == 5,
+    'and the global fallback still resolves when nothing is passed')
+_G.source = 0
+
 local realMaxPlayers = GetMaxPlayers
 
 function GetMaxPlayers()

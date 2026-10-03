@@ -17,6 +17,12 @@ state the roadmap has been asking for since it was written.
 
 ### Added
 
+- **`Security.AdminGroup`** — the group or ACE permission a player needs to run
+  `cis_core_info` / `cis_core_doctor` in game. Default `"admin"`, which QBCore
+  and qbx_core both grant. ESX's superuser group is `superadmin`, which is not
+  the same string, so an ESX server granting `superadmin` could never run these
+  in game and received silence — the correct refusal and a baffling symptom at
+  once.
 - **State store.** `cis_state`, the platform's one namespaced, durable
   key/value store: `StateSet`, `StateGet`, `StateAll`, `StateKeys`,
   `StateDelete`, `StateClear`, `GetStateSummary`. The roadmap gives this

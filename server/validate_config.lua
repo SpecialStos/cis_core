@@ -81,7 +81,8 @@ local KNOWN_KEYS = {
 }
 
 local KNOWN_SECURITY_KEYS = {
-    EventPrefix = true, Debug = true, AuthorizedResources = true, DropPlayer = true,
+    EventPrefix = true, AdminGroup = true, Debug = true,
+    AuthorizedResources = true, DropPlayer = true,
 }
 
 -- ------------------------------------------------------------------- plumbing
@@ -519,6 +520,19 @@ local function validateSecurity(security, report)
     end
 
     check(report, security, 'Security', 'EventPrefix', { type = 'string' })
+
+    -- The group a player needs to run the console commands in game. Empty is
+    -- refused rather than accepted-and-defaulted, because an empty group makes
+    -- every permission check against it meaningless and looks configured.
+    local adminGroup = security.AdminGroup
+    if type(adminGroup) == 'string' and adminGroup == '' then
+        add(report.error, 'CFG_VALUE', 'Security.AdminGroup',
+            'is empty, which matches nothing and makes every in-game permission check against it meaningless',
+            'set it to the framework group or ACE permission your admins actually have -- "admin" on QBCore and qbx_core, ' ..
+                'and "superadmin" on an ESX server that grants its superuser group under that name')
+    else
+        check(report, security, 'Security', 'AdminGroup', { type = 'string' })
+    end
     check(report, security, 'Security', 'Debug', { type = 'boolean', severity = 'warning' })
 
     -- The prefix is compiled into cis_libs's own files as a fallback. Changing

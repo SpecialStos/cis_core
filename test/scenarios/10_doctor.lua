@@ -225,12 +225,32 @@ check(Env.runCommand('cis_core_doctor', 5) == true, 'cis_core_doctor accepts a p
 check(#Env.env.printed == 0, 'but prints NOTHING for a non-admin')
 
 -- And the positive: an admin gets the report.
+local askedFor = nil
 Env.export('GetFramework', function()
-    return { HasPermission = function() return true end }
+    -- SELF, src, permission. `pcall(fw.HasPermission, fw, src, group)` -- so the
+    -- permission is the THIRD parameter, not the second. Getting that wrong in
+    -- the stub reads the player id as a group name and fails in a way that
+    -- looks like the command checking the wrong thing.
+    return { HasPermission = function(_, src, permission)
+        askedFor = permission
+        return true
+    end }
 end)
 Env.env.printed = {}
 Env.runCommand('cis_core_doctor', 5)
 check(#Env.env.printed > 0, 'and everything for an admin')
+
+-- THE GROUP IS CONFIGURABLE, and it has to be. ESX's superuser group is
+-- `superadmin`, which is not the string `admin` -- so a server that grants
+-- `superadmin` could never run these in game and got SILENCE, which is the
+-- correct refusal and a baffling symptom at the same time.
+check(askedFor == 'admin', 'the default group is the one QBCore and qbx_core grant')
+Security.AdminGroup = 'superadmin'
+Env.env.printed = {}
+Env.runCommand('cis_core_doctor', 5)
+check(askedFor == 'superadmin', 'and an operator on ESX can name their own')
+check(#Env.env.printed > 0, 'which then works in game')
+Security.AdminGroup = nil
 
 -- ================================================================= no secrets
 -- The whole point of the report being safe to paste into a support thread.

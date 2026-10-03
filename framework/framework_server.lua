@@ -1027,7 +1027,7 @@ RegisterNetEvent('QBCore:Server:PlayerLoaded', function(player)
     if type(player) == 'table' then
         claimed = (type(player.PlayerData) == 'table' and player.PlayerData.source) or player.source
     end
-    local src = CisAuthority.resolveSource(claimed, 'QBCore:Server:PlayerLoaded')
+    local src = CisAuthority.resolveSource(claimed, 'QBCore:Server:PlayerLoaded', source)
     if src then
         local job = Framework.GetPlayerJob(src)
         if job then
@@ -1038,7 +1038,7 @@ RegisterNetEvent('QBCore:Server:PlayerLoaded', function(player)
 end)
 
 AddEventHandler('esx:playerLoaded', function(payloadSrc)
-    local src = CisAuthority.resolveSource(payloadSrc, 'esx:playerLoaded')
+    local src = CisAuthority.resolveSource(payloadSrc, 'esx:playerLoaded', source)
     if src then
         local job = Framework.GetPlayerJob(src)
         if job then
@@ -1089,9 +1089,9 @@ RegisterNetEvent('QBCore:Server:OnJobUpdate', function(payloadSrc, job)
     -- `job` is accepted and ignored on purpose. Passing it to publishActualJob
     -- would reintroduce the whole finding; the parameter stays because the
     -- runtime sends it and a handler cannot choose the arity it is called with.
-    publishActualJob(CisAuthority.resolveSource(payloadSrc, 'QBCore:Server:OnJobUpdate'))
+    publishActualJob(CisAuthority.resolveSource(payloadSrc, 'QBCore:Server:OnJobUpdate', source))
 end)
 
 AddEventHandler('esx:setJob', function(payloadSrc, job)
-    publishActualJob(CisAuthority.resolveSource(payloadSrc, 'esx:setJob'))
+    publishActualJob(CisAuthority.resolveSource(payloadSrc, 'esx:setJob', source))
 end)

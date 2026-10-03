@@ -25,6 +25,18 @@
 --  header of server/doctor.lua for why that is a hard rule and not a habit.
 -- =============================================================================
 
+--- The group or ACE permission a player needs. Read per call rather than cached
+--- at load, so a `restart` that reloads the config without restarting the
+--- resource still takes effect -- and so a missing setting is a fallback rather
+--- than a crash.
+local function adminGroup()
+    if type(Security) == 'table' and type(Security.AdminGroup) == 'string'
+        and Security.AdminGroup ~= '' then
+        return Security.AdminGroup
+    end
+    return 'admin'
+end
+
 -- Frameworks disagree about what "admin" is called, and the answer belongs to
 -- the framework, not to this resource. Asking through the capability is also
 -- what keeps the permission decision on the server: this file never reads a
@@ -46,7 +58,7 @@ local function isAdmin(src)
     --
     -- A missing capability, an unknown player and a framework with no groups
     -- all answer false rather than raising, so a refusal is the normal path.
-    local called, allowed = pcall(fw.HasPermission, fw, src, 'admin')
+    local called, allowed = pcall(fw.HasPermission, fw, src, adminGroup())
     return called == true and allowed == true
 end
 
