@@ -46,6 +46,8 @@ local env = {
     players = {},
     -- everything printed, captured
     printed = {},
+    -- console commands, captured the way threads are
+    commands = {},
     -- threads registered by CreateThread, run explicitly by the scenario
     threads = {},
     -- net events and handlers registered by the file under test
@@ -142,6 +144,33 @@ end
 function _G.CreateThread(fn)
     env.threads[#env.threads + 1] = fn
     return #env.threads
+end
+
+function _G.RegisterCommand(name, handler, restricted)
+  env.commands[#env.commands + 1] = { name = name, handler = handler, restricted = restricted }
+end
+
+--- Fire a captured console command the way the runtime does.
+---
+--- `restricted` is passed back to the caller so a scenario can assert on the
+--- flag the command was REGISTERED with, not only on what it does. A command
+--- that gates on the caller is still worth marking restricted, because the
+--- flag is what stops the command appearing in a player's help list.
+function FrameworkEnv.runCommand(name, src)
+  for _, entry in ipairs(env.commands) do
+    if entry.name == name then
+      entry.handler(src, {}, 0)
+      return true
+    end
+  end
+  return false
+end
+
+function FrameworkEnv.commandNamed(name)
+  for _, entry in ipairs(env.commands) do
+    if entry.name == name then return entry end
+  end
+  return nil
 end
 
 function _G.RegisterNetEvent(name, handler)
@@ -776,6 +805,7 @@ function FrameworkEnv.reset()
     env.metadata = {}
     env.players = {}
     env.printed = {}
+    env.commands = {}
     env.threads = {}
     env.netEvents = {}
     env.handlers = {}
