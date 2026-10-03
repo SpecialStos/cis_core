@@ -112,7 +112,10 @@ function _G.GetCurrentResourceName()
 end
 
 function _G.GetInvokingResource()
-    return 'cis_core'
+    -- Settable, because the state store's whole security property is derived
+    -- from this answer and a scenario has to be able to be a DIFFERENT
+    -- resource to prove that two of them cannot see each other.
+    return env.invokingResource or 'cis_core'
 end
 
 function _G.DropPlayer(src, reason)
@@ -185,7 +188,21 @@ function _G.TriggerServerEvent() end
 -- make every existence probe in cis_core look correct.
 local resourcesMt = {
     __index = function(_, exportName)
+        -- Third-party exports the scenario declared...
         local declared = env.exports[exportName]
+        -- ...and THIS RESOURCE'S OWN, which the file under test registered with
+        -- `exports('Name', fn)`. It has to resolve too: the state store is
+        -- exercised through `exports['cis_core']:StateSet(...)` exactly as a
+        -- product would call it, and a resource's own exports ARE callable
+        -- from inside itself in FiveM.
+        if declared == nil then
+            for _, entry in ipairs(env.registered) do
+                if entry.name == exportName then
+                    declared = entry.fn
+                    break
+                end
+            end
+        end
         if declared == nil then
             return nil
         end
@@ -222,6 +239,316 @@ function FrameworkEnv.connect(sources)
         env.players[i] = tonumber(src)
     end
     return env.players
+end
+
+-- A fake database, because the state store is the one thing here that has to
+-- be tested against something that behaves like a driver rather than against a
+-- return value.
+--
+-- It is deliberately NOT a SQL engine. It answers the five shapes the runner
+-- and the store actually emit -- CREATE, SELECT, INSERT, UPDATE, DELETE -- and
+-- it answers them the way oxmysql does, including the parts that matter:
+-- DbUpdate returns AFFECTED ROWS, and nil means "no driver answered" rather
+-- than "no rows". A stub that returned true for everything would leave every
+-- failure path in server/state.lua untested, which is the opposite of the
+-- point.
+--
+-- THE CONSTRAINT, stated rather than discovered: the only SQL in this resource
+-- is the SQL in server/migrations.lua and server/state.lua. Every WHERE is a
+-- list of `col = ?` joined by AND, and every SET is a list of `col = ?` joined
+-- by a comma. Neither `=` nor `?` contains a comma, so splitting on commas and
+-- on " AND " is exact rather than approximate -- which is also why this is a
+-- fake and not a parser.
+function FrameworkEnv.installFakeDb(options)
+    local opts = options or {}
+    local db = {
+        tables = {},
+        calls = {},
+        -- Flipped mid-scenario to simulate a driver that has gone away: a state
+        -- the store has to survive WITHOUT latching off for the life of the
+        -- server.
+        broken = false,
+        autoIncrement = 1,
+    }
+
+    -- Backticks are STRIPPED, and that is not a nicety.
+    --
+    -- The first version of this fake spelled the optional backtick as `` `? ``,
+    -- which is the trap every Lua pattern has: there is no `?` quantifier, so
+    -- that reads as "a backtick followed by a literal question mark" and matches
+    -- nothing at all. Every SELECT therefore parsed as unknown and answered
+    -- nil, which reached the migration runner as "could not read the ledger".
+    --
+    -- cis_core emits no backticks at all -- server/state.lua and
+    -- server/migrations.lua interpolate a constant table name with %s -- so
+    -- stripping is both correct and simpler than writing every pattern twice.
+    -- IDENTIFIERS ARE `[%w_]+`, NOT `%w+`. There is no `_` in `%w` -- Lua's
+    -- word class is letters and digits ONLY -- so `(%w+)` captures `cis` from
+    -- `cis_migrations` and every pattern anchored on a table name then failed to
+    -- match the rest of the line. Every SELECT parsed as unknown, answered nil,
+    -- and reached the migration runner as "could not read the ledger".
+    --
+    -- The same trap is why the backticks are stripped rather than made
+    -- optional: `?` is not a quantifier in a Lua pattern, so `` `? `` means
+    -- "a backtick followed by a literal question mark" and matches nothing.
+    -- cis_core emits no backticks at all, so stripping is correct and simpler.
+
+    local function trim(s)
+        local v = tostring(s):gsub('^%s+', ''):gsub('%s+$', '')
+        return v
+    end
+
+    -- `owner = ? AND k = ?` -> { 'owner = ?', 'k = ?' }
+    local function splitAnd(where)
+        local out = {}
+        if not where then return out end
+        for part in (where .. ' AND '):gmatch('(.-)%s+AND%s+') do
+            out[#out + 1] = trim(part)
+        end
+        return out
+    end
+
+    -- `owner = ?, k = ?, v = ?` -> { 'owner', 'k', 'v' }
+    local function splitSet(setPart)
+        local out = {}
+        for part in tostring(setPart):gmatch('[^,]+') do
+            local column = trim(part):match('([%w_]+)%s*=')
+            if column then out[#out + 1] = column end
+        end
+        return out
+    end
+
+    -- EVERY PATTERN IS DESTRUCTURED INTO ONE VARIABLE PER CAPTURE, and that is
+    -- the third version of this function, each one fixing the last.
+    --
+    -- `local a, b = s:match(p)` where `p` has THREE captures does not give you
+    -- "a and b" -- it gives you the FIRST TWO and throws the third away, with no
+    -- error. Written as `local where = s:match(threeCaptures)` you get the
+    -- FIRST capture, which is the SELECT list, which is a string, which is
+    -- truthy -- so the branch fires and every field after it is wrong.
+    --
+    -- That is what happened here twice: `SELECT k FROM cis_state WHERE owner =
+    -- ?` parsed with `table = "k"` and a WHERE clause of "k", matched no rows,
+    -- and the store's read-before-write upsert took the INSERT path every
+    -- time. A duplicate row is the one thing an upsert must not produce, and
+    -- the fake was the thing producing it.
+    local function parse(sql)
+        local s = trim(sql)
+
+        local createTable = s:match('^CREATE TABLE IF NOT EXISTS%s+([%w_]+)')
+        if createTable then return { kind = 'create', table = createTable } end
+
+        local insertTable, insertColumns = s:match('^INSERT INTO%s+([%w_]+)%s*%(([^%)]*)%)')
+        if insertColumns then
+            local cols = {}
+            for column in insertColumns:gmatch('[^,]+') do
+                cols[#cols + 1] = trim(column)
+            end
+            return { kind = 'insert', table = insertTable, columns = cols }
+        end
+
+        local updateTable, updateSet, updateWhere =
+            s:match('^UPDATE%s+([%w_]+)%s+SET%s+(.-)%s+WHERE%s+(.*)$')
+        if updateWhere then
+            return { kind = 'update', table = updateTable, set = splitSet(updateSet), where = splitAnd(updateWhere) }
+        end
+
+        local deleteTable, deleteWhere = s:match('^DELETE FROM%s+([%w_]+)%s+WHERE%s+(.*)$')
+        if deleteWhere then
+            return { kind = 'delete', table = deleteTable, where = splitAnd(deleteWhere) }
+        end
+        local deleteAll = s:match('^DELETE FROM%s+([%w_]+)$')
+        if deleteAll then return { kind = 'delete', table = deleteAll, where = {} } end
+
+        local groupList, groupTable, groupCol =
+            s:match('^SELECT%s+(.-)%s+FROM%s+([%w_]+)%s+GROUP BY%s+(.*)$')
+        if groupCol then
+            return { kind = 'select', table = groupTable, where = {}, selectList = groupList, grouped = true }
+        end
+
+        local selList, selTable, selWhere =
+            s:match('^SELECT%s+(.-)%s+FROM%s+([%w_]+)%s+WHERE%s+(.*)$')
+        if selWhere then
+            return { kind = 'select', table = selTable, where = splitAnd(selWhere), selectList = selList }
+        end
+
+        local plainList, plainTable = s:match('^SELECT%s+(.-)%s+FROM%s+([%w_]+)$')
+        if plainTable then
+            return { kind = 'select', table = plainTable, where = {}, selectList = plainList }
+        end
+
+        return { kind = 'unknown', sql = s }
+    end
+
+    -- `from` is HOW MANY placeholders come before the WHERE: 0 for a bare
+    -- WHERE, and the SET column count for an UPDATE.
+    --
+    -- `i = from + 1`, not `from`. Lua's `params` is 1-BASED, and starting the
+    -- index at `from` makes every WHERE read one placeholder too early: the
+    -- first clause compares correctly and the second compares the WHERE value
+    -- against a SET value, so nothing ever matches. That is why the store's
+    -- read-before-write upsert took the INSERT path on every call and produced
+    -- a duplicate row -- which is the one thing an upsert must never do.
+    local function matches(row, where, params, from)
+        if not where or #where == 0 then return true end
+        local i = (from or 0) + 1
+        for _, clause in ipairs(where) do
+            local column = clause:match('([%w_]+)%s*=%s*%?')
+            if not column then return false end
+            if row[column] ~= params[i] then return false end
+            i = i + 1
+        end
+        return true
+    end
+
+    -- Every export records its call and refuses while the driver is "broken",
+    -- which is how the store's failure path gets exercised at all.
+    local function note(kind, sql)
+        db.calls[#db.calls + 1] = { kind = kind, sql = trim(sql) }
+        return not db.broken
+    end
+
+    FrameworkEnv.export('DbQuery', function(sql, params)
+        local live = note('query', sql)
+        if not live then return nil end
+        local p = parse(sql)
+        local values = params or {}
+        if p.kind == 'create' then
+            db.tables[p.table] = db.tables[p.table] or {}
+            return {}
+        end
+        if p.kind ~= 'select' then return nil end
+        local out = {}
+        for _, row in ipairs(db.tables[p.table] or {}) do
+            if matches(row, p.where, values, 0) then out[#out + 1] = row end
+        end
+        if p.grouped then
+            -- GROUP BY owner, collapsing to one row per owner.
+            local grouped = {}
+            local order = {}
+            for _, row in ipairs(out) do
+                if grouped[row.owner] == nil then
+                    order[#order + 1] = row.owner
+                    grouped[row.owner] = { owner = row.owner, n = 0 }
+                end
+                grouped[row.owner].n = grouped[row.owner].n + 1
+            end
+            local counts = {}
+            for _, owner in ipairs(order) do
+                counts[#counts + 1] = { owner = owner, n = grouped[owner].n }
+            end
+            return counts
+        end
+        return out
+    end)
+
+    FrameworkEnv.export('DbSingle', function(sql, params)
+        local live = note('single', sql)
+        if not live then return nil end
+        local p = parse(sql)
+        if p.kind ~= 'select' then return nil end
+        for _, row in ipairs(db.tables[p.table] or {}) do
+            if matches(row, p.where, params or {}, 0) then return row end
+        end
+        return nil
+    end)
+
+    local function insertRow(p, values)
+        if opts.refuseInserts then return nil end
+        local rows = db.tables[p.table] or {}
+        db.tables[p.table] = rows
+        local row = {}
+        for index, column in ipairs(p.columns) do
+            row[column] = values[index]
+        end
+        rows[#rows + 1] = row
+        return db.autoIncrement
+    end
+
+    FrameworkEnv.export('DbInsert', function(sql, params)
+        local live = note('insert', sql)
+        if not live then return nil end
+        local p = parse(sql)
+        if p.kind ~= 'insert' then return nil end
+        local id = insertRow(p, params or {})
+        if id == nil then return nil end
+        db.autoIncrement = db.autoIncrement + 1
+        return id
+    end)
+
+    FrameworkEnv.export('DbUpdate', function(sql, params)
+        local live = note('update', sql)
+        if not live then return nil end
+        local p = parse(sql)
+        local values = params or {}
+
+        -- The ledger's own INSERT, for a driver that arrives here instead of at
+        -- DbInsert.
+        if p.kind == 'insert' then
+            return insertRow(p, values) and 1 or nil
+        end
+
+        -- DDL AND DELETE ARRIVE HERE TOO, and a fake that refuses them is not
+        -- faithful. `applyOne` in server/migrations.lua runs every statement
+        -- through DbUpdate when the driver has no transaction, so the schema
+        -- migrations -- which are all CREATE TABLE -- go down this path. The
+        -- first version of this fake rejected them, the cis_state migration
+        -- failed with "statement failed: CREATE TABLE ...", and the scenario
+        -- reported a broken resource when the resource was fine.
+        if p.kind == 'create' then
+            db.tables[p.table] = db.tables[p.table] or {}
+            return 0
+        end
+        if p.kind == 'delete' then
+            local kept = {}
+            for _, row in ipairs(db.tables[p.table] or {}) do
+                if not matches(row, p.where, values, 0) then
+                    kept[#kept + 1] = row
+                end
+            end
+            local removed = #(db.tables[p.table] or {}) - #kept
+            db.tables[p.table] = kept
+            return removed
+        end
+        if p.kind ~= 'update' then return nil end
+
+        local rows = db.tables[p.table] or {}
+        local affected = 0
+        for _, row in ipairs(rows) do
+            if matches(row, p.where, values, #p.set) then
+                for index, column in ipairs(p.set) do
+                    row[column] = values[index]
+                end
+                affected = affected + 1
+            end
+        end
+        return affected
+    end)
+
+    FrameworkEnv.export('DbDelete', function(sql, params)
+        local live = note('delete', sql)
+        if not live then return nil end
+        return nil
+    end)
+
+    -- Transactions are OFF by default, because only oxmysql supports one. A
+    -- fake that pretends otherwise is how driver-specific behaviour becomes
+    -- load-bearing without anybody having decided it should be.
+    FrameworkEnv.export('DbTransaction', function(queries)
+        note('transaction', ('%s queries'):format(type(queries) == 'table' and #queries or 0))
+        if db.broken then return false, 'no database provider answered' end
+        if not opts.transactions then return false, 'this driver has no transaction support' end
+        return true
+    end)
+
+    return db
+end
+
+--- Who GetInvokingResource() answers for. The state store's whole security
+--- property is derived from this answer, so a scenario has to be able to be a
+--- DIFFERENT resource in order to prove that two of them cannot see each other.
+function FrameworkEnv.invokingAs(resource)
+    FrameworkEnv.env.invokingResource = resource
 end
 
 function FrameworkEnv.resource(name, version)
@@ -567,7 +894,12 @@ function FrameworkEnv.installCisLibs()
     -- Everything else cis_core calls that the framework scenarios exercise.
     -- Answering "not ready" is the honest default: a scenario that wants
     -- readiness says so.
-    FrameworkEnv.export('WaitReady', function() return false end)
+    -- Ready by default. A scenario that is NOT about readiness should not have
+    -- to say so, and a boot thread that returns early because WaitReady said
+    -- no looks exactly like a resource that did nothing -- which is the shape
+    -- the first run of the state-store scenario had: zero database calls and
+    -- two assertions failing for a reason that was in the harness.
+    FrameworkEnv.export('WaitReady', function() return true end)
     FrameworkEnv.export('SetConfig', function() return true end)
     FrameworkEnv.export('SetDropPlayerHandler', function() return true end)
     FrameworkEnv.export('RegisterCapability', function() return true end)

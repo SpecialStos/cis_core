@@ -35,7 +35,22 @@ const dir = path.join(__dirname, 'scenarios')
 // world looks like; these decide what is available to look at it with.
 const DEPS = [
   'shared/normalize.lua',
+  // The migration runner is loaded by a scenario that needs it, but its PURE
+  // half is shared and every scenario gets it: it defines CisMigrations, and a
+  // scenario that does not have it fails inside server/migrations.lua with
+  // "attempt to index a nil value (global 'CisMigrations')" -- which reads like
+  // a bug in the runner and is a missing line in this list.
+  'shared/migrations.lua',
   'server/authority.lua',
+  // Same reasoning as shared/migrations.lua: the state store calls it on every
+  // write, so a scenario that loads server/state.lua without it fails inside
+  // the store with "attempt to index a nil value (global 'CisStateRules')".
+  'server/state_rules.lua',
+  // fengari has no `json`, and FiveM's is a global in both realms. This is a
+  // real encoder and a real decoder for the subset the state rules permit --
+  // see the file header for the two rapidjson behaviours it reproduces on
+  // purpose, one of which is that NaN does NOT raise.
+  'test/fake_json.lua',
   'test/harness.lua',
   'test/framework_env.lua',
 ]
