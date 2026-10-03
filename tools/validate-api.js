@@ -338,6 +338,52 @@ function validate(manifest, surface, opts = {}) {
     }
   }
 
+  // ---- console commands
+  //
+  // A command is a published surface exactly as much as an export is: an
+  // operator types it, a support thread quotes it, and the documentation tells
+  // people to run it. A renamed command is a command that quietly stops working,
+  // which is the same class of drift the exports block above exists to catch.
+  //
+  // The direction that hurts is the undeclared one. A command in the source and
+  // not in the contract is a capability with no documented permission model --
+  // and the permission model is the first thing a reader of a console command
+  // wants to know, because it decides whether it is safe to tell a player about.
+  //
+  // E06x rather than E04x, because those belong to the events block.
+  const declaredCommands = manifest.commands
+  const scannedCommands = new Set(surface.commands || [])
+  if (declaredCommands !== undefined && (typeof declaredCommands !== 'object' || declaredCommands === null)) {
+    r.add('E060', 'commands', 'must be a table when present')
+  } else if (declaredCommands !== undefined) {
+    for (const name of Object.keys(declaredCommands)) {
+      const meta = declaredCommands[name]
+      const where = `commands['${name}']`
+      if (typeof meta !== 'object' || meta === null) {
+        r.add('E060', where, 'must be a table')
+        continue
+      }
+      if (typeof meta.since !== 'string' || !SEMVER.test(meta.since)) {
+        r.add('E060', `${where}.since`, `is required and must be MAJOR.MINOR.PATCH (got ${JSON.stringify(meta.since)})`)
+      }
+      if (typeof meta.use !== 'string' || meta.use === '') {
+        r.add('E061', `${where}.use`, 'must be a non-empty string saying what the command is for')
+      }
+      if (typeof meta.restricted !== 'boolean') {
+        r.add('E061', `${where}.restricted`,
+          `must be a boolean saying whether it is console/admin only (got ${JSON.stringify(meta.restricted)})`)
+      }
+      if (!scannedCommands.has(name)) {
+        r.add('E062', where, 'declared but no source file registers a command with this name')
+      }
+    }
+    for (const name of scannedCommands) {
+      if (!Object.prototype.hasOwnProperty.call(declaredCommands, name)) {
+        r.add('E062', `commands['${name}']`, 'registered in the source but not declared in api.lua')
+      }
+    }
+  }
+
   if (strict) {
     for (const u of surface.unresolved) {
       r.add('E033', `exports.${u.name}`, `signature cannot be read from ${u.file} (${u.why})`)
@@ -489,7 +535,7 @@ function main(argv) {
   const ok = report.render(label)
   process.stdout.write(
     `        surface: ${surface.counts.server} server exports, ${surface.counts.client} client exports, ` +
-      `${surface.events.length} net events\n`,
+      `${surface.events.length} net events, ${(surface.commands || []).length} console commands\n`,
   )
   if (loaded.table && loaded.table.api !== undefined) {
     process.stdout.write(`        contract major: ${loaded.table.api}, product version: ${loaded.table.version}\n`)

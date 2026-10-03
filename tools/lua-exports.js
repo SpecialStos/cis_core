@@ -255,6 +255,22 @@ const EVENT_RE = /\b(RegisterNetEvent|CisNetOn|SecureNetOn|TriggerClientEvent|Tr
 const PREFIX_EVENT_RE = /\beventPrefix\(\)\s*\.\.\s*(['"])((?:[^'"\\]|\\.)*)\1/g
 const PREFIX = '${Security.EventPrefix}'
 
+// `RegisterCommand('name', ...)` and cis_libs' validated wrapper
+// `Cis.command.add('name', ...)`. A console command is as much a published
+// surface as an export: an operator types it, a support thread quotes it, and a
+// renamed command is a command that stops working with nothing saying why.
+const COMMAND_RE = /\b(?:RegisterCommand|Cis\.command\.add)\s*\(\s*(['"])((?:[^'"\\]|\\.)*)\1/g
+
+function scanCommands(src) {
+  const clean = stripComments(src)
+  const names = new Set()
+  for (const m of clean.matchAll(COMMAND_RE)) {
+    if (m[2] === '') continue
+    names.add(m[2])
+  }
+  return [...names].sort()
+}
+
 function scanEvents(src) {
   const clean = stripComments(src)
   const names = new Set()
@@ -276,6 +292,7 @@ function scanResource(resourceDir) {
   const realms = { shared: manifest.shared, client: manifest.client, server: manifest.server }
   const exports = []
   const events = new Set()
+  const commands = new Set()
   const unresolved = []
 
   for (const realm of ['server', 'client', 'shared']) {
@@ -295,12 +312,14 @@ function scanResource(resourceDir) {
         if (!e.resolved) unresolved.push({ realm: inRealms[0], name: e.name, file: e.file, why: e.why })
       }
       for (const ev of scanEvents(src)) events.add(ev)
+      for (const cmd of scanCommands(src)) commands.add(cmd)
     }
   }
 
   return {
     exports,
     events: [...events].sort(),
+    commands: [...commands].sort(),
     unresolved,
     warnings: manifest.warnings,
     counts: {
@@ -310,4 +329,4 @@ function scanResource(resourceDir) {
   }
 }
 
-module.exports = { scanResource, scanExports, scanEvents, stripComments, readManifest, normaliseParams, PREFIX }
+module.exports = { scanResource, scanExports, scanEvents, scanCommands, stripComments, readManifest, normaliseParams, PREFIX }

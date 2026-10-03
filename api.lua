@@ -220,4 +220,27 @@ return {
             payload = 'cis_libs to client: ({ [itemName] = count }). This resource LISTENS; cis_libs fires it',
         },
     },
+
+    -- Console commands. A command is as much a published surface as an export:
+    -- an operator types it, a support thread quotes it, and the documentation
+    -- tells people to run it. Leaving them out of the contract is how a
+    -- renamed command becomes a command that quietly stopped working.
+    --
+    -- `restricted` is stated rather than implied, because it is the first thing
+    -- a reader of a console command needs to know: whether it is safe to mention
+    -- in public, and whether a player can type it. Every command here answers
+    -- false to a non-admin and prints nothing at all, so a refusal is silence
+    -- rather than a message that tells a stranger what this server runs.
+    commands = {
+        ['cis_core_info'] = {
+            since = '1.1.0',
+            restricted = true,
+            use = 'One line: version, detected framework, configured inventory, migration count. Safe to run at any time; the shape an operator types when something looks wrong',
+        },
+        ['cis_core_doctor'] = {
+            since = '1.1.0',
+            restricted = true,
+            use = 'The whole report: dependencies, capability slots, the allow-list, the state store, and every configuration problem. Each line that says something is wrong also says the fix. Prints resource names, booleans, counts and reasons -- never a webhook, a connection string, an identifier or a config value',
+        },
+    },
 }
