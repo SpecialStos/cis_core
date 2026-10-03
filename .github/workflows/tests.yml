@@ -28,6 +28,10 @@ jobs:
         run: npm ci
 
       - name: Run test suite
+        # Two halves: the pure suites, and the framework scenarios. The
+        # scenarios are the ones that found the ESX self-argument bug and the
+        # qbx_core event bug, and they run here for the same reason the unit
+        # tests do -- no server, no assets, every push.
         run: npm test
 
       - name: Lint

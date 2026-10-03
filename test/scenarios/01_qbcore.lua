@@ -25,7 +25,7 @@ local core = { Functions = {
 Env.export('GetCoreObject', function() return core end)
 
 -- The player who is connected, for the backfill walk at the end of boot.
-Env.players = { 1 }
+Env.connect({ 1 })
 
 -- Record what the boot path PUBLISHES. The backfill is invisible from the
 -- outside -- it prints nothing -- so the only honest way to assert it happened
@@ -38,6 +38,13 @@ end)
 
 dofile('framework/framework_server.lua')
 Env.runThreads()
+
+-- Counted HERE, immediately after boot and BEFORE any event is fired. The
+-- backfill is the first thing that publishes, and asserting on the total at the
+-- bottom of the file counts the events this scenario fired afterwards too --
+-- which is how "the backfill published exactly one job" failed on a run where
+-- the backfill had published exactly one job.
+local afterBoot = #publishedJobs
 
 local check = Test.check
 Test.begin('qbcore')
@@ -87,9 +94,15 @@ check(none.name == nil, 'and nothing else')
 -- A job change the server broadcasts. `source` is 0 because the framework
 -- triggered it from its own server code.
 local jobsBefore = #publishedJobs
-Env.triggerServer('QBCore:Server:OnJobUpdate', 1, { name = 'ambulance', grade = 1 })
+local fired, fireErr = Env.triggerServer('QBCore:Server:OnJobUpdate', 1, { name = 'ambulance', grade = 1 })
+-- Notes, not assertions: the world this ran against, printed only when
+-- something else failed. A reader of a red run should not have to re-derive it.
+Test.note(('triggerServer fired=%s connected=%d detected=%s'):format(
+    tostring(fired), #Env.env.players, tostring(Config.Framework.Type)))
+Test.note(('published before=%d after=%d'):format(jobsBefore, #publishedJobs))
 check(#publishedJobs == jobsBefore + 1, 'a server-side job change is published')
-check(publishedJobs[#publishedJobs].job.name == 'ambulance', 'with the job it carried')
+local last = publishedJobs[#publishedJobs]
+check(last ~= nil and last.job ~= nil and last.job.name == 'ambulance', 'with the job it carried')
 
 -- The same event from a CLIENT naming somebody else: refused, and the attacker
 -- gets their own source. This is the security fix, exercised through the real
@@ -102,7 +115,7 @@ check(CisAuthority.spoofed == spoofBefore + 1, 'a client naming another player i
 -- what makes an online-police count correct on a RESTART rather than only after
 -- each player happens to reconnect -- the framework's own PlayerLoaded events
 -- have already fired for everyone by the time this thread runs.
-check(#publishedJobs == 1, 'the backfill published exactly one job')
+check(afterBoot == 1, 'the backfill published exactly one job')
 check(publishedJobs[1].src == 1, 'for the connected player')
 check(publishedJobs[1].job ~= nil and publishedJobs[1].job.name == 'police',
     'and with the job that player actually has')

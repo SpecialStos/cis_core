@@ -209,6 +209,21 @@ _G.exports = setmetatable({}, {
 -- ================================================================== helpers
 
 --- Declare a resource as started, with an optional version.
+--- Declare the players who are connected.
+---
+--- A helper rather than `Env.env.players = {...}` because a scenario reaching
+--- into `FrameworkEnv` for a field that lives on the world table sets a NEW
+--- field, silently, and the world keeps its empty list. That happened: the
+--- first QBCore scenario reported a connected player and had none, and the
+--- symptom was four unrelated assertion failures rather than one obvious one.
+function FrameworkEnv.connect(sources)
+    env.players = {}
+    for i, src in ipairs(sources) do
+        env.players[i] = tonumber(src)
+    end
+    return env.players
+end
+
 function FrameworkEnv.resource(name, version)
     env.resources[name] = 'started'
     env.metadata[name] = { version = version }
@@ -231,8 +246,21 @@ end
 --- NOT a mock of QBCore's behaviour. A shape, and nothing else: the tests
 --- assert which fields cis_core READS, so the shape must be the real one and
 --- the methods must do nothing clever.
+-- NOT A CONSTRUCTOR LITERAL, AND THAT IS THE POINT.
+--
+-- The obvious way to write this is `local p = { Functions = { AddMoney =
+-- function() ... p.PlayerData ... end } }`, and it does not work: the scope of a
+-- local begins AFTER its declaration statement, so `p` inside the constructor
+-- is the outer one -- a GLOBAL here. Every stub that closed over `p` raised
+-- "attempt to index a nil value (global 'p')", which reads like a bug in the
+-- framework bridge and is a bug in the mock.
+--
+-- Declare, then assign. `local p` alone puts the local in scope for everything
+-- that follows, including a constructor that mentions it.
+
 function FrameworkEnv.qbPlayer(overrides)
-    local p = {
+    local p
+    p = {
         PlayerData = {
             source = 1,
             citizenid = 'ABC12345',
@@ -243,47 +271,109 @@ function FrameworkEnv.qbPlayer(overrides)
             items = { { name = 'water', amount = 2, slot = 1 } },
             metadata = { handcuffed = false },
         },
+        -- NO leading `_` for self, and that is deliberate.
+        --
+        -- QBCore declares these as `function Player.Functions.AddMoney(moneytype,
+        -- amount, reason)` -- declared with a dot, so the implicit first
+        -- parameter is the Functions table and the CALLER passes only the real
+        -- arguments. cis_core therefore calls `player.Functions.AddMoney(moneyType,
+        -- amount)` with a dot, and that is CORRECT.
+        --
+        -- The first version of this stub took `(_, moneyType, amount)`, so
+        -- amount arrived nil and the scenario died with "attempt to compare
+        -- number with nil" -- which reads like a bug in the money path and was a
+        -- bug in the mock. It is recorded here because the instinct to "fix"
+        -- cis_core's dot call into a colon call is exactly the mistake this
+        -- comment exists to stop, and it would pass every test in the file.
         Functions = {
-            AddMoney = function(_, moneyType, amount) return amount > 0 end,
-            RemoveMoney = function(_, moneyType, amount) return amount > 0 end,
-            SetJob = function(_, job, grade) p.PlayerData.job = { name = job, grade = grade } end,
+            AddMoney = function(moneyType, amount) return tonumber(amount) and amount > 0 end,
+            RemoveMoney = function(moneyType, amount) return tonumber(amount) and amount > 0 end,
             HasPermission = function() return true end,
         },
     }
+    p.Functions.SetJob = function(job, grade)
+        p.PlayerData.job = { name = job, grade = grade }
+    end
     for k, v in pairs(overrides or {}) do
         p[k] = v
     end
     return p
 end
 
---- An ESX xPlayer, same rule: a shape, and nothing else.
 function FrameworkEnv.esxPlayer(overrides)
-    local p = {
+    local p
+    p = {
         identifier = 'license:0000',
+        -- ESX's account store, so the stubs below can decide what is a real
+        -- account rather than accepting every string.
+        accounts = { cash = 500, bank = 1200 },
         job = { name = 'police', grade = 3 },
-        getName = function() return 'JohnDoe' end,
         -- The parentheses are REQUIRED and not stylistic: a table constructor
         -- is a simpleexp and cannot begin an index chain, so `{...}[key]` is a
         -- syntax error and `({...})[key]` is the only way to index a literal.
         get = function(key) return ({ handcuffed = false })[key] end,
-        addAccountMoney = function() end,
-        removeAccountMoney = function() end,
-        setJob = function(job, grade) p.job = { name = job, grade = grade } end,
-        getGroup = function() end,
-        getAccounts = function()
-            return { { name = 'cash', money = 500 }, { name = 'bank', money = 1200 } }
-        end,
     }
+
+    -- EVERY method below takes `self` FIRST, because ESX declares them as
+    -- `function self.addAccountMoney(accountName, money, reason)` -- so a
+    -- caller must use a COLON. The QBCore factory above is the opposite, and
+    -- getting either one wrong makes the scenario pass while the bridge is
+    -- broken, which is the whole reason this note exists.
+
+    -- Faithful to es_extended/server/classes/player.lua, which RAISES on an
+    -- unknown account and on a non-positive amount from 1.8.5 onward. A stub
+    -- that accepted anything would make cis_core's pcall-based success check
+    -- look correct when it had never actually been exercised.
+    function p.addAccountMoney(self, account, amount)
+        if type(account) ~= 'string' or p.accounts[account] == nil then
+            error(('Tried To Add To Invalid Account %s For Player %s!'):format(
+                tostring(account), tostring(self.source)), 2)
+        end
+        if type(amount) ~= 'number' or amount <= 0 then
+            error('Cannot add a non-positive amount', 2)
+        end
+        p.accounts[account] = p.accounts[account] + amount
+        return true
+    end
+
+    function p.removeAccountMoney(self, account, amount)
+        if type(account) ~= 'string' or p.accounts[account] == nil then
+            error(('Tried To Remove From Invalid Account %s For Player %s!'):format(
+                tostring(account), tostring(self.source)), 2)
+        end
+        if type(amount) ~= 'number' or amount <= 0 then
+            error('Cannot remove a non-positive amount', 2)
+        end
+        p.accounts[account] = p.accounts[account] - amount
+        return true
+    end
+
+    function p.setJob(self, job, grade)
+        p.job = { name = job, grade = grade }
+    end
+
+    function p.getGroup(self)
+        -- Never nil in real ESX: the DB defaults the group to 'user'. Returning
+        -- a group rather than nil is what makes the permission check meaningful
+        -- and what stops a bridge from treating "no group" as "superadmin".
+        return 'user'
+    end
+
+    function p.getName(self)
+        return 'JohnDoe'
+    end
+
+    function p.getAccounts(self)
+        return { { name = 'cash', money = 500 }, { name = 'bank', money = 1200 } }
+    end
+
     for k, v in pairs(overrides or {}) do
         p[k] = v
     end
     return p
 end
 
---- Run every thread the file under test registered, in order.
----
---- In order, because the order IS the contract: detect() decides `provider`,
---- and every Framework function reads it.
+--- Declare the players who are connected.
 function FrameworkEnv.runThreads()
     for i = 1, #env.threads do
         env.threads[i]()

@@ -20,7 +20,7 @@ local current = nil
 
 --- Start a suite. The name is the one printed in the run line.
 function Test.begin(name)
-    current = { name = name, passed = 0, failed = 0, failures = {} }
+    current = { name = name, passed = 0, failed = 0, failures = {}, notes = {} }
     Test.suites[#Test.suites + 1] = current
 end
 
@@ -50,7 +50,29 @@ function Test.report()
     for i = 1, #current.failures do
         io.stderr:write(('FAIL(%s): %s\n'):format(current.name, current.failures[i]))
     end
+    -- Notes only when something failed. A passing run that printed its own
+    -- context would train people to skip the output, which is the one thing an
+    -- output nobody reads is for.
+    if current.failed > 0 then
+        for n = 1, #current.notes do
+            io.stderr:write(('  note(%s): %s\n'):format(current.name, current.notes[n]))
+        end
+    end
     io.write(('%s passed=%d failed=%d\n'):format(current.name, current.passed, current.failed))
+end
+
+--- A line of context for a failure, printed with the suite's result.
+---
+--- For the tests that run inside a SIMULATED world. When one of them fails the
+--- question is never "what did the assertion say" -- it is "what world did the
+--- code under test actually see". A scenario attaches that here and it comes out
+--- next to the failure, instead of costing a re-run with a print added and then
+--- removed.
+function Test.note(msg)
+    if current == nil then
+        error('Test.note called before Test.begin', 2)
+    end
+    current.notes[#current.notes + 1] = tostring(msg)
 end
 
 --- Grand totals, across every suite that ran. `{ passed, failed, suites }`.

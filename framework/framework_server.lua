@@ -326,12 +326,40 @@ function Framework.IsLoaded()
     return FrameworkLoaded
 end
 
+-- ONE SHAPE, ON EVERY FRAMEWORK.
+--
+-- It was not. The QBCore branch returned `QBCore.Functions.GetPlayers()`,
+-- which returns QBPlayer OBJECTS. The ESX branch returned `ESX.GetPlayers()`
+-- -- which, since 1.9.2 at least, IS the FiveM native (`ESX.GetPlayers =
+-- GetPlayers`, es_extended/server/functions.lua) and returns an array of SOURCE
+-- ID STRINGS. One method, two shapes: a consumer reading the first element got
+-- a table on QBCore and the string "3" on ESX, and the bug that produced lived
+-- in the consumer, on a platform its author never tested.
+--
+-- So the promise is kept on both sides and the ESX branch builds what it was
+-- implicitly promising. The cost is one GetPlayerFromId per connected player,
+-- which is a table read inside ESX, for the "who is online" question this method
+-- exists to answer.
 function Framework.GetPlayers()
     if provider == 'QBCORE' and QBCore and QBCore.Functions then
         return QBCore.Functions.GetPlayers()
     end
     if (provider == 'ESX' or provider == 'ESX-LEGACY') and ESX then
-        return ESX.GetPlayers()
+        local out = {}
+        for _, id in ipairs(ESX.GetPlayers() or {}) do
+            -- `tonumber` because the ids are STRINGS on every ESX from 1.9.2
+            -- onward and numbers before it. GetPlayerFromId tonumbers
+            -- internally, but doing it here keeps the list honest about what a
+            -- caller is holding.
+            local src = tonumber(id)
+            if src then
+                local xPlayer = ESX.GetPlayerFromId(src)
+                if xPlayer then
+                    out[#out + 1] = xPlayer
+                end
+            end
+        end
+        return out
     end
     return GetPlayers()
 end
@@ -460,7 +488,7 @@ function Framework.GiveMoney(serverId, amount, moneyType)
         -- and raises on an unknown account, so `ok` is the only success signal
         -- available.
         local ok = pcall(function()
-            return player.addAccountMoney(moneyType, amount)
+            return player:addAccountMoney(moneyType, amount)
         end)
         return ok
     end
@@ -491,7 +519,7 @@ function Framework.RemoveMoney(serverId, amount, moneyType)
             return exports['cis_libs']:InventoryRemove(serverId, 'markedbills', 1)
         end
         local ok = pcall(function()
-            return player.removeAccountMoney(moneyType, amount)
+            return player:removeAccountMoney(moneyType, amount)
         end)
         return ok
     end
@@ -546,7 +574,7 @@ function Framework.SetPlayerJob(serverId, job, grade)
             end)
         end
     elseif provider == 'ESX' or provider == 'ESX-LEGACY' then
-        player.setJob(job, grade)
+        player:setJob(job, grade)
     end
     exports['cis_libs']:PublishJobUpdate({ name = job, grade = grade }, serverId)
 end
@@ -573,7 +601,7 @@ function Framework.HasPermission(serverId, permission)
             return ok and result or false
         end
     elseif provider == 'ESX' or provider == 'ESX-LEGACY' then
-        return player.getGroup and player.getGroup() == permission
+        return player.getGroup and player:getGroup() == permission
     end
     return false
 end
@@ -608,12 +636,47 @@ function Framework.Notify(src, message, kind)
     exports['cis_libs']:NotifyClient(src, message, kind)
 end
 
+-- =============================================================================
+--  EVERY ESX xPlayer CALL IS A COLON CALL, AND EVERY ONE OF THEM WAS A DOT
+--
+--  ESX builds its player with `function self.addAccountMoney(accountName, money,
+--  reason)` -- declared against `self`, so `self` is the FIRST DECLARED
+--  PARAMETER. (es_extended/server/classes/player.lua: addAccountMoney 440,
+--  removeAccountMoney 463, setJob 612, getGroup 318, get 328, getAccounts 332,
+--  getName 407, getMeta 913.)
+--
+--  A dot call therefore feeds the first real argument into `self`. The whole of
+--  the ESX surface was reached that way here, and what it does on a real
+--  server is worse than returning a wrong value:
+--
+--    player.getGroup()          self = nil   -> `return self.group` RAISES
+--    player.addAccountMoney(a,b) self = a, accountName = b, money = nil
+--                                               -> ESX refuses a nil amount
+--    player.setJob(job, grade)  self = job, newJob = 3 (a NUMBER) -> no such job
+--    player.getName()           self = nil   -> RAISES
+--    player.getAccounts()       self = nil   -> RAISES
+--
+--  So on ESX, money did not work, job changes did not work, permissions RAISED,
+--  and the character name was unavailable. Not one of them errored visibly --
+--  GiveMoney is wrapped in a pcall and returned false, which reads exactly like
+--  "the transaction was declined".
+--
+--  The QBCore side is the opposite and is why this went unnoticed: QBCore
+--  declares `function Player.Functions.AddMoney(moneytype, amount, reason)` on
+--  a Functions TABLE, so its implicit self is that table and a dot call from
+--  outside is already correct. One convention per framework, and they are
+--  opposites, and the file had adopted QBCore's for both.
+--
+--  If you are editing a line in this block: ESX takes a colon, QBCore takes a
+--  dot. Getting it wrong is silent on one framework and fatal on the other.
+-- =============================================================================
+
 local function esxAccounts(player)
     if not player or type(player.getAccounts) ~= 'function' then
         return nil
     end
     local ok, accounts = pcall(function()
-        return player.getAccounts()
+        return player:getAccounts()
     end)
     if not ok then
         return nil
@@ -621,6 +684,45 @@ local function esxAccounts(player)
     -- Only the CALL is framework-specific. The list-to-map conversion is not,
     -- so it lives in shared/normalize.lua with the rest of the shape reading.
     return CisNormalize.accountMap(accounts)
+end
+
+-- ESX's metadata, which is NOT where `get()` looks.
+--
+-- It used to be read as `player.get('metadata')`, and that is ALWAYS nil. The
+-- xPlayer is built with two separate tables:
+--
+--     self.variables = {}        -- what get() and set() read and write
+--     self.metadata  = metadata  -- what getMeta() and setMeta() read and write
+--
+-- (es_extended/server/classes/player.lua: `function self.get(k) return
+-- self.variables[k] end`). So `get('metadata')` asks the variables table for a
+-- key nothing ever writes there, and `NormalizedPlayer(src).metadata` was nil
+-- on every ESX server while looking correct: the field was present, of the
+-- right type, and always empty. A consumer checking `metadata.hadcuffed` got
+-- nil and took the "not handcuffed" branch forever, with nothing anywhere
+-- saying the field was unread.
+--
+-- Order matters. `getMeta()` is the documented accessor and its index argument
+-- is optional, defaulting to the whole table, so a bare call is right. The
+-- plain field is the second attempt for builds that predate getMeta, and both
+-- are probed because a raise here would take NormalizedPlayer down for a
+-- consumer that only wanted the name.
+local function esxMetadata(player)
+    if type(player.getMeta) == 'function' then
+        local ok, value = pcall(function()
+            return player:getMeta()
+        end)
+        if ok and type(value) == 'table' then
+            return value
+        end
+    end
+    if type(player.metadata) == 'table' then
+        return player.metadata
+    end
+    -- nil rather than {}. An empty table says "this player has no metadata";
+    -- nil says "this framework version does not have the concept". Only one of
+    -- those is something a caller can act on.
+    return nil
 end
 
 -- One player, one shape, whichever framework is underneath. `money` is
@@ -643,7 +745,7 @@ function Framework.NormalizedPlayer(src)
             name = CisNormalize.personName(info.firstname, info.lastname)
         elseif type(player.getName) == 'function' then
             local ok, value = pcall(function()
-                return player.getName()
+                return player:getName()
             end)
             name = ok and value or nil
         end
@@ -653,12 +755,7 @@ function Framework.NormalizedPlayer(src)
         else
             -- ESX keeps money in accounts and metadata on the xPlayer itself.
             money = esxAccounts(player)
-            local ok, value = pcall(function()
-                return player.get('metadata')
-            end)
-            if ok then
-                metadata = value
-            end
+            metadata = esxMetadata(player)
         end
     end
     return {

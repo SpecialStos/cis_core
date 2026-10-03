@@ -68,6 +68,15 @@ for (const name of scenarios) {
     load(path.join('test', 'scenarios', name))
   } catch (err) {
     failedScenarios += 1
+    // Best-effort report BEFORE the message. A scenario that dies on an
+    // un-indexed nil never reaches its own Test.report(), so without this the
+    // most informative part of the run -- the notes the scenario attached
+    // about the world it was looking at -- is exactly what gets lost.
+    try {
+      lauxlib.luaL_dostring(L, toLua('Test.report()'))
+    } catch (e) {
+      /* the scenario died before Test.begin; there is nothing to report */
+    }
     console.log(`  FAIL  scenarios/${name}: ${err.message}`)
     continue
   }

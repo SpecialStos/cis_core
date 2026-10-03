@@ -5,7 +5,7 @@
   "description": "Platform services that hold data: framework abstraction, state, inventory service, configuration and migrations.",
   "license": "SEE LICENSE IN LICENSE.md",
   "scripts": {
-    "test": "node test/run.js",
+    "test": "node test/run.js && node test/scenarios.js",
     "test:luacheck": "node tools/luacheck.js",
     "test:api": "node tools/validate-api.js --api api.lua --resource .",
     "test:api-selftest": "node tools/validate-api.js --selftest",
