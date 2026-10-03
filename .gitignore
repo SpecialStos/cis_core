@@ -20,3 +20,5 @@ reports/
 # Editor/agent working state, not part of the library.
 .zcode/
 .zcodeignore
+# Splice scratch files from tools that patch themselves in place.
+_static_checks.tmp
