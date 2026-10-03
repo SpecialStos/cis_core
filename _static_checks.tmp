@@ -1,0 +1,77 @@
+// ---------------------------------------------------------------------------
+// Thread and resmon discipline
+//
+// These are not style rules. A `while true do Wait(0)` loop in this resource
+// burns a slice of every frame forever, on every client, for a service that is
+// meant to be idle most of the time -- and the symptom is not a crash, it is a
+// server that is quietly slower and never says so.
+//
+// The targets this resource states for itself: 0.00-0.02 ms idle. A single
+// Wait(0) loop is three orders of magnitude past that, and nothing in a boot log
+// will mention it.
+// ---------------------------------------------------------------------------
+
+// S005 -- Wait(0). Never correct here: nothing in this resource draws, so there
+// is no frame to synchronise to.
+function checkZeroWait(clean, file) {
+  clean.split('\n').forEach((text, idx) => {
+    if (/\bWait\s*\(\s*0\s*\)/.test(text)) {
+      report(
+        'S005',
+        file,
+        idx + 1,
+        text,
+        'waits zero milliseconds',
+        'nothing here draws, so there is no frame to sync to. Use an explicit interval, or event-driven code with no loop at all',
+      )
+    }
+  })
+}
+
+// S006 -- a loop that never yields.
+//
+// `while true do` is correct in a client render loop and a leak everywhere else,
+// so the test is not the loop itself but the ABSENCE of a Wait in its body: a
+// thread that never yields stops being scheduled for anything else, and the
+// resource stops responding while nothing on screen moves.
+function checkUnboundedLoops(clean, file) {
+  const lines = clean.split('\n')
+  lines.forEach((text, idx) => {
+    if (!/\bwhile\s+true\s+do\b/.test(text)) return
+    const body = lines.slice(idx, idx + 12).join('\n')
+    if (/\bWait\s*\(|\bCitizen\.Wait\s*\(/.test(body)) return
+    report(
+      'S006',
+      file,
+      idx + 1,
+      text,
+      'unbounded loop with no Wait in its body',
+      'the thread never yields, so nothing else runs on it. If this is a client render loop, say so in a comment and keep the draw',
+    )
+  })
+}
+
+// S007 -- a poll tighter than the floor.
+//
+// 50 ms is the floor this resource uses everywhere, and every one of those is a
+// boot-path wait for another RESOURCE to start, which happens a handful of times
+// per server start. A shorter interval is a per-frame cost wearing a poll's
+// clothes, and 50 ms against 10 ms is indistinguishable to a player.
+const MIN_POLL_MS = 25
+
+function checkPollInterval(clean, file) {
+  clean.split('\n').forEach((text, idx) => {
+    const m = /\bWait\s*\(\s*([0-9]+)\s*\)/.exec(text)
+    if (!m) return
+    const ms = Number(m[1])
+    if (ms >= MIN_POLL_MS) return
+    report(
+      'S007',
+      file,
+      idx + 1,
+      text,
+      `polls every ${ms}ms`,
+      `below the ${MIN_POLL_MS}ms floor. Every poll is a scheduler round trip on every client; if this is waiting for a resource to start, 50ms is indistinguishable to a human and an order of magnitude cheaper`,
+    )
+  })
+}
