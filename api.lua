@@ -72,7 +72,7 @@ return {
         -- -------------------------------------------------------- inventory
         CisCoreInventory = {
             since = '1.0.0', ['until'] = false, stable = true, deprecated = false,
-            use = 'Registered into cis_libs as the `inventory` capability. Returns { Count, Add, Remove, Has, Snapshot }',
+            use = 'Registered into cis_libs as the `inventory` capability. Returns { Count, Add, Remove, Has, Snapshot }. Add and Remove answer `false, reason`: QBCore and qbx_core expose no item API at all, so a server configured for the item table of the framework itself gets a refusal that names the setting to change',
             realm = 'server',
             signature = '()',
         },

@@ -647,9 +647,22 @@ The adapters behind it live in `cis_bridge`.
 **A client count is a hint and always was.** It is a snapshot the server pushed,
 up to one inventory event stale. Never gate a server-side action on it.
 
-The provider is consulted first and the framework is the fallback. A missing
-provider is therefore a *degraded* inventory, not a broken one — and the symptom
-is "HasItem always says no", never a crash.
+The provider is consulted first and the framework is the fallback. **Every
+branch falls through when the configured resource is not started**, so a missing
+provider is a *degraded* inventory rather than a broken one.
+
+Two things that fallback cannot be, and which are worth knowing before you rely
+on it:
+
+- **Counting works; adding may not.** `Count` walks `PlayerData.items`, which
+  QBCore and qbx_core still carry. Adding needs the framework's item *method*,
+  and current QBCore has none — `AddItem` is absent from its method table and
+  undefined on the player, because QBCore uses ox_inventory and nothing else.
+  So on a QBCore server with `Inventory = "typical"`, counts work and adds
+  refuse. `Add` and `Remove` say which case it was.
+- **The refused add is loud in the return value, not in the console.**
+  `false, reason`, with the reason naming `Config.Framework.Inventory` and the
+  value that fixes it.
 
 ---
 

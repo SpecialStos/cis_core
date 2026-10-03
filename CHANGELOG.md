@@ -82,6 +82,24 @@ state the roadmap has been asking for since it was written.
 
 ### Fixed
 
+- **The inventory service returned 0 for everything when the configured
+  inventory was not started.** `oxCount` returned `0` — rather than nil —
+  when ox_inventory was stopped, so `Count` answered 0 for every item for every
+  player. It was the one branch in that file that did not apply the dispatch
+  rule its own header mandates, and the two descriptions of that behaviour
+  contradicted each other: the header promised the fall-through, DOCUMENTATION
+  said the symptom was "HasItem always says no". The code was doing the
+  documented symptom, so `HasItem` denied everything on exactly the setup the
+  design claims to degrade rather than break. `oxCount` now answers nil and the
+  count falls through to the framework walk.
+- **The framework fallback is not universal, and said so as though it were.** The
+  comment claimed "the framework's own AddItem, which is the correct answer for
+  QBCore and ESX". Current qb-core has no item API at all — `AddItem` and
+  `RemoveItem` are absent from its `varargMethods` list and undefined on the
+  player, because QBCore uses ox_inventory and nothing else. So on a QBCore
+  server configured for `typical`, `AddItem` and `RemoveItem` were false and
+  nil. `Add` and `Remove` now answer `false, reason` naming the setting and the
+  value that fixes it, instead of a bare false that reads as "declined".
 - **`GetPlayers()` returned source ids on QBCore.** `QBCore.Functions.GetPlayers()`
   iterates `pairs(QBCore.Players)` and collects the KEYS -- it answers an array
   of source ids, and the method that returns objects (`GetQBPlayers`) sits one

@@ -21,9 +21,22 @@ local function started(name)
     return GetResourceState(name) == 'started'
 end
 
+-- Returns nil -- NOT 0 -- when ox_inventory is not started.
+--
+-- The nil is the whole function. A zero here would be indistinguishable from
+-- "the player does not have it", and `InventoryCount` would return that zero:
+-- the one branch in this file that did not apply the dispatch rule its own
+-- header mandates, on a server where ox_inventory is configured and stopped.
+--
+-- So on exactly the setup the header promises to degrade rather than break --
+-- "take the branch Config.Framework.Inventory names ONLY if that resource is
+-- actually started, and otherwise fall through to the next one" -- `Count`
+-- answered 0 for every item for every player. `HasItem` said no to everything,
+-- and nothing in the console said why. That is the symptom DOCUMENTATION.md
+-- describes as the thing this design avoids.
 local function oxCount(src, item)
     if not started('ox_inventory') then
-        return 0
+        return nil
     end
     local count = exports.ox_inventory:Search(src, 'count', item)
     -- 0 rather than nil. Callers compare with >=, and a nil here would raise on
@@ -54,7 +67,7 @@ end
 
 function InventoryCount(src, item)
     local kind = inventoryType()
-    if kind == 'ox_inventory' then
+    if kind == 'ox_inventory' and started('ox_inventory') then
         return oxCount(src, item)
     end
     if kind == 'codem-inventory' and started('codem-inventory') then
@@ -117,10 +130,30 @@ local function typicalPlayer(src)
 end
 
 -- The branch order below is the fallback chain, and every branch is gated on
--- `started(name)`. That gate is what makes the last `else` a working default
--- rather than a "should not happen": a server that named an inventory it does
--- not have installed lands here and uses the framework's own AddItem, which is
--- the correct answer for QBCore and ESX.
+-- `started(name)`. A server that named an inventory it does not have installed
+-- lands in the last `else`.
+--
+-- AND THE LAST `else` IS NOT THE UNIVERSAL SAFETY NET THIS USED TO CLAIM.
+-- It said "the framework's own AddItem, which is the correct answer for QBCore
+-- and ESX". Checked against current qb-core:
+--
+--     local varargMethods = { 'GetPlayerData', 'UpdateClient', 'SetJob', ...
+--                             'AddMoney', 'RemoveMoney', 'SetMoney', ... }
+--
+-- `AddItem` and `RemoveItem` are NOT in that list, `Player:AddItem` is not
+-- defined anywhere in the file, and qb-core's manifest does not depend on
+-- ox_inventory but its player object simply has no item API. QBCore uses
+-- ox_inventory and nothing else.
+--
+-- So on a QBCore server with `Config.Framework.Inventory = 'typical'`, the
+-- original comment described, AddItem and RemoveItem were false and nil --
+-- every add and every removal silently did nothing. `Count` kept working,
+-- because it walks `PlayerData.items`, which is why the symptom was "money
+-- moves but the item never arrives" rather than an obvious breakage.
+--
+-- ESX does still carry `addInventoryItem`, so the chain is genuinely useful
+-- there. The refusal below therefore NAMES which case it is, because "the item
+-- was not added" with no reason is the one answer an operator cannot act on.
 --
 -- The positional `nil`/`false` before `metadata` is each resource's own
 -- "slot/slotName/target" or "ignore enqueue" argument, not a placeholder this
@@ -129,7 +162,7 @@ end
 function InventoryAdd(src, item, amount, metadata)
     amount = amount or 1
     local kind = inventoryType()
-    local ok
+    local ok, reason
     if kind == 'ox_inventory' and started('ox_inventory') then
         ok = exports.ox_inventory:AddItem(src, item, amount, metadata)
     elseif kind == 'codem-inventory' and started('codem-inventory') then
@@ -144,20 +177,24 @@ function InventoryAdd(src, item, amount, metadata)
             ok = player.Functions.AddItem(item, amount, false, metadata)
         elseif player and player.addInventoryItem then
             ok = player.addInventoryItem(item, amount, metadata)
+        elseif not player then
+            ok, reason = false, ('no player object for source %s, so there is nothing to add to'):format(tostring(src))
         else
-            ok = false
+            ok, reason = false, ('the framework in use (%s) has no item API -- QBCore and qbx_core do not expose '
+                .. 'one at all; set Config.Framework.Inventory to the inventory resource you actually run, '
+                .. '"ox_inventory" being the usual answer'):format(tostring(Config and Config.Framework and Config.Framework.Type))
         end
     end
     if ok then
         pushSnapshot(src)
     end
-    return ok
+    return ok, reason
 end
 
 function InventoryRemove(src, item, amount)
     amount = amount or 1
     local kind = inventoryType()
-    local ok
+    local ok, reason
     if kind == 'ox_inventory' and started('ox_inventory') then
         ok = exports.ox_inventory:RemoveItem(src, item, amount)
     elseif kind == 'codem-inventory' and started('codem-inventory') then
@@ -172,14 +209,18 @@ function InventoryRemove(src, item, amount)
             ok = player.Functions.RemoveItem(item, amount)
         elseif player and player.removeInventoryItem then
             ok = player.removeInventoryItem(item, amount)
+        elseif not player then
+            ok, reason = false, ('no player object for source %s, so there is nothing to remove from'):format(tostring(src))
         else
-            ok = false
+            ok, reason = false, ('the framework in use (%s) has no item API -- QBCore and qbx_core do not expose '
+                .. 'one at all; set Config.Framework.Inventory to the inventory resource you actually run, '
+                .. '"ox_inventory" being the usual answer'):format(tostring(Config and Config.Framework and Config.Framework.Type))
         end
     end
     if ok then
         pushSnapshot(src)
     end
-    return ok
+    return ok, reason
 end
 
 -- THERE USED TO BE A CALLBACK HERE, AND IT WAS DEAD.

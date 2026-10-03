@@ -22,7 +22,7 @@ it, and print it.
 |---|---|---|---|
 | `AppliedMigrations` | `()` | 1.0.0 | The sorted list of migration ids recorded as applied, for diagnostics |
 | `CisCoreDropPlayer` | `(src, reason)` | 1.0.0 | Registered into cis_libs as the `security` capability. The one place a security report can drop a player |
-| `CisCoreInventory` | `()` | 1.0.0 | Registered into cis_libs as the `inventory` capability. Returns { Count, Add, Remove, Has, Snapshot } |
+| `CisCoreInventory` | `()` | 1.0.0 | Registered into cis_libs as the `inventory` capability. Returns { Count, Add, Remove, Has, Snapshot }. Add and Remove answer `false, reason`: QBCore and qbx_core expose no item API at all, so a server configured for the item table of the framework itself gets a refusal that names the setting to change |
 | `GetCoreSummary` | `()` | 1.0.0 | Resolved, non-secret state for diagnostics: configApplied, framework, inventory, providers, applied migrations |
 | `GetDoctorReport` | `()` | 1.1.0 | The full install report as data: every environment line and every configuration problem, each with its fix. Same content as the `cis_core_doctor` console command. Carries no secret -- resource names, booleans, counts and reasons only |
 | `GetStateSummary` | `()` | 1.1.0 | exports["cis_core"]:GetStateSummary(). { available, reason, namespaces = { { owner, keys } } }, read from the database rather than from memory, so a restarted server reports what is really stored. No value is read, so no state is exposed by asking |
