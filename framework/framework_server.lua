@@ -439,8 +439,36 @@ end
 -- which is a table read inside ESX, for the "who is online" question this method
 -- exists to answer.
 function Framework.GetPlayers()
+    -- `QBCore.Functions.GetPlayers()` RETURNS SOURCE IDS, not player objects.
+    --
+    --     function QBCore.Functions.GetPlayers()
+    --         local sources = {}
+    --         for k in pairs(QBCore.Players) do sources[#sources + 1] = k end
+    --         return sources
+    --     end
+    --
+    -- `k` is the key of the players table -- a source id. The method that DOES
+    -- return objects is `GetQBPlayers()`, one line below it in the same file,
+    -- with the comment "Will return an array of QB Player class instances"
+    -- directly under the one that does not.
+    --
+    -- So this was the THIRD shape: the ESX branch returned xPlayers, this
+    -- returned numbers, and the NONE branch returned id strings. A consumer
+    -- doing `for _, p in ipairs(...) do p.PlayerData.citizenid end` worked on
+    -- ESX and raised a nil index on QBCore -- which is most of the audience.
+    --
+    -- Resolved through GetPlayer so all three branches answer the same thing:
+    -- the normalised object, which is the shape this function's own
+    -- documentation promises and the shape a consumer can actually use.
     if provider == 'QBCORE' and QBCore and QBCore.Functions then
-        return QBCore.Functions.GetPlayers()
+        local out = {}
+        for _, id in ipairs(QBCore.Functions.GetPlayers() or {}) do
+            local src = tonumber(id)
+            if src then
+                out[#out + 1] = Framework.NormalizedPlayer(src)
+            end
+        end
+        return out
     end
     -- The NONE branch used to return the native, which is an array of SOURCE
     -- ID STRINGS -- the third shape this function exists to eliminate, on the

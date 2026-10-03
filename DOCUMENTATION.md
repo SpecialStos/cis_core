@@ -110,7 +110,7 @@ Registered as `CisCoreFramework` and reachable through `Cis.framework`.
 | Method | Returns | Standalone (`NONE`) answer |
 |---|---|---|
 | `IsLoaded()` | `boolean` | `false` |
-| `GetPlayers()` | table of player objects, or the native `GetPlayers()` | native list |
+| `GetPlayers()` | array of **normalised player objects** — the same shape on every framework | `{}` |
 | `GetPlayer(src)` | player object, or `nil` | `nil` |
 | `GetPlayerIdentifier(src)` | `string\|nil` | `nil` |
 | `GetPlayerJob(src)` | job table, or `nil` | `nil` |

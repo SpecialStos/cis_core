@@ -82,6 +82,18 @@ state the roadmap has been asking for since it was written.
 
 ### Fixed
 
+- **`GetPlayers()` returned source ids on QBCore.** `QBCore.Functions.GetPlayers()`
+  iterates `pairs(QBCore.Players)` and collects the KEYS -- it answers an array
+  of source ids, and the method that returns objects (`GetQBPlayers`) sits one
+  line below it with a comment saying so. So `Framework.GetPlayers()` answered
+  objects on ESX, ids on QBCore and id strings standalone: a consumer doing
+  `for _, p in ipairs(...) do p.PlayerData.citizenid end` worked on ESX and hit
+  a nil index on QBCore, which is most of the audience. All three branches now
+  resolve through `NormalizedPlayer` and answer the same shape.
+
+  It survived because the TEST FIXTURE returned objects — a fixture written to
+  match the code rather than the framework, which is the same mistake the ESX
+  account list was making at the same time. Three fixtures were corrected.
 - **The state size limit bounded structure, not bytes.** 256 entries x 8
   levels of large strings passed every check, was handed to `json.encode` --
   which materialises the whole thing as one string -- and only then reached the

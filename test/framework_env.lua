@@ -641,7 +641,13 @@ function FrameworkEnv.qbPlayer(overrides)
         -- bug in the mock. It is recorded here because the instinct to "fix"
         -- cis_core's dot call into a colon call is exactly the mistake this
         -- comment exists to stop, and it would pass every test in the file.
+        -- `QBCore.Functions.GetPlayers()` returns SOURCE IDS -- see the note in
+        -- framework_server.lua. The fixture used to return player objects,
+        -- which is how a shape bug survived: the fixture was written to match
+        -- the code rather than the framework. It is now faithful, and the
+        -- scenario that depends on it asserts the resolved shape.
         Functions = {
+            GetPlayers = function() return { 1, 2 } end,
             AddMoney = function(moneyType, amount) return tonumber(amount) and amount > 0 end,
             RemoveMoney = function(moneyType, amount) return tonumber(amount) and amount > 0 end,
             HasPermission = function() return true end,

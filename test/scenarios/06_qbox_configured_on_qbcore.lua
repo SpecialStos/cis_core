@@ -27,7 +27,7 @@ Env.resource('qb-core', '3.7.1')
 Env.export('GetCoreObject', function()
     return { Functions = {
         GetPlayer = function(src) return tonumber(src) == 1 and Env.qbPlayer() or nil end,
-        GetPlayers = function() return { Env.qbPlayer() } end,
+        GetPlayers = function() return { 1 } end, -- source IDS, as the real one does
     } }
 end)
 Env.connect({ 1 })

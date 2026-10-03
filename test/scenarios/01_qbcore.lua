@@ -19,7 +19,10 @@ Config = {
 Env.resource('qb-core', '3.7.1')
 local core = { Functions = {
     GetPlayer = function(src) return src == 1 and Env.qbPlayer() or nil end,
-    GetPlayers = function() return { Env.qbPlayer() } end,
+    -- SOURCE IDS, as the real one does: `for k in pairs(QBCore.Players) do
+    -- sources[#sources+1] = k end`. This fixture returned objects for the life
+    -- of the scenario, and that is how the shape bug survived a test suite.
+    GetPlayers = function() return { 1, 2 } end,
     HasPermission = function() return true end,
 } }
 Env.export('GetCoreObject', function() return core end)
@@ -126,6 +129,42 @@ check(afterBoot == 1, 'the backfill published exactly one job')
 check(publishedJobs[1].src == 1, 'for the connected player')
 check(publishedJobs[1].job ~= nil and publishedJobs[1].job.name == 'police',
     'and with the job that player actually has')
+
+-- GetPlayers. `QBCore.Functions.GetPlayers()` answers SOURCE IDS -- verified in
+-- qb-core's own server/functions.lua, where it iterates `pairs(QBCore.Players)`
+-- and collects the KEYS. The fixture used to answer objects, which is a fixture
+-- written to match the code rather than the framework, and it is exactly why
+-- this shape bug survived.
+--
+-- So this is the assertion that the bridge resolves them: every branch returns
+-- the same shape, and a consumer does not have to know which framework is up.
+local listed = CisFramework.GetPlayers()
+check(type(listed) == 'table', 'GetPlayers returns a table')
+check(#listed == 2, 'with one entry per connected player')
+check(listed[1] ~= nil and type(listed[1]) == 'table', 'and each entry is an OBJECT, not a source id')
+check(listed[1].id == 1, 'carrying the source')
+check(listed[2] ~= nil and listed[2].id == 2, 'for both players')
+check(listed[1].name == 'John Doe', 'and the normalised shape, so a consumer reads it the same way on every framework')
+
+-- Money. The Functions table BINDS its own receiver -- buildMethodTable does
+-- `t[name] = function(...) return fn(player, ...) end` -- so a DOT call is
+-- correct here, while ESX's xPlayer methods declare `self` explicitly and need
+-- a COLON. Opposite conventions, one file, and getting either wrong is silent
+-- on one framework.
+check(CisFramework.GiveMoney(1, 100, 'cash') == true, 'GiveMoney answers a boolean through the bound Functions table')
+check(CisFramework.RemoveMoney(1, 100, 'cash') == true, 'and RemoveMoney likewise')
+check(CisFramework.GiveMoney(99, 100, 'cash') == false, 'false for a source with no player')
+
+-- And markedbills is an ITEM, not a money type -- verified in qb-core's
+-- shared/items.lua: `markedbills = { ... type = 'item' ... unique = true }`.
+-- Routing it to AddMoney would create an account named markedbills that no shop
+-- and no ATM knows how to spend, while the balance still rises.
+-- Nothing is printed either way, so the assertion is about the ROUTE: no line
+-- anywhere names markedbills as an account, and the call answers the same
+-- boolean a real account would.
+check(CisFramework.GiveMoney(1, 500, 'markedbills') == true, 'markedbills is accepted')
+check(Env.printedMatching('markedbills') == 0,
+    'and nothing anywhere treats it as an account')
 
 Test.report()
 Test.raiseIfFailed()
