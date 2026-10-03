@@ -218,19 +218,22 @@ end
 --
 -- Taking only the first shape would have made every playerLoaded event a no-op,
 -- which is the same bug the nil handlers were.
+--
+-- The shape reading itself is `CisNormalize.jobFromPayload`, in
+-- shared/normalize.lua, because it is the decision this file's header says was
+-- never tested -- and a decision written inline here is a decision the next
+-- reader has to re-derive from six lines of comment.
 function Framework.UpdatePlayerJob(job)
-    if type(job) == 'table' then
-        PlayerJob = job
+    local resolved = CisNormalize.jobFromPayload(job)
+    if resolved then
+        PlayerJob = resolved
     end
 end
 
 function Framework.OnPlayerLoaded(data)
-    if type(data) ~= 'table' then
-        return
-    end
-    local job = data.name and data or data.job
-    if type(job) == 'table' and job.name then
-        PlayerJob = job
+    local resolved = CisNormalize.jobFromPayload(data)
+    if resolved then
+        PlayerJob = resolved
     end
 end
 

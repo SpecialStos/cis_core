@@ -65,13 +65,7 @@ local function snapshotOx()
     if type(items) ~= 'table' then
         return
     end
-    local nextCounts = {}
-    for _, entry in pairs(items) do
-        if type(entry) == 'table' and entry.name then
-            nextCounts[entry.name] = (nextCounts[entry.name] or 0) + (entry.count or entry.amount or 1)
-        end
-    end
-    setCounts(nextCounts)
+    setCounts(CisNormalize.itemSnapshot(items))
 end
 
 AddEventHandler('ox_inventory:updateInventory', function()
@@ -84,13 +78,7 @@ RegisterNetEvent('QBCore:Player:SetPlayerData', function(data)
     if not data or not data.items then
         return
     end
-    local nextCounts = {}
-    for _, item in pairs(data.items) do
-        if item and item.name then
-            nextCounts[item.name] = (nextCounts[item.name] or 0) + (item.amount or item.count or 1)
-        end
-    end
-    setCounts(nextCounts)
+    setCounts(CisNormalize.itemSnapshot(data.items))
 end)
 
 -- 0, never nil. A consumer comparing against nil decides a player has no

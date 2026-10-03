@@ -61,6 +61,11 @@ dependencies {
 shared_scripts {
     'shared/cis.lua',
     'shared/migrations.lua',
+    -- The shape reading, in both realms. It is a shared script rather than a
+    -- duplicated server and client copy precisely because the two halves of
+    -- this resource disagreed once about the same decision, and a copy is how
+    -- that happens again.
+    'shared/normalize.lua',
 }
 
 client_scripts {

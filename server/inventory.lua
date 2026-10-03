@@ -78,17 +78,12 @@ function InventoryCount(src, item)
             return result and 1 or 0
         end
     end
-    -- The generic walk. `entry.name` and `entry.item` are both accepted
-    -- because the two conventions are both in the wild, and `amount`/`count`
-    -- likewise; an entry with neither counts as 1 rather than 0, so an
-    -- unrecognised shape reads as "has some" rather than "has none".
-    local total = 0
-    for _, entry in pairs(playerItems(src)) do
-        if entry and (entry.name == item or entry.item == item) then
-            total = total + (entry.amount or entry.count or 1)
-        end
-    end
-    return total
+    -- The generic walk. Which field holds the name, which holds the amount, and
+    -- what an unrecognised entry counts as are all decisions, so they live in
+    -- shared/normalize.lua where they are unit tested -- this file's header
+    -- records a two-year divergence between the counter and the snapshot that
+    -- only a test would have caught.
+    return CisNormalize.itemCount(playerItems(src), item)
 end
 
 -- A comparison, not a separate call, so "has" can never disagree with "count"
@@ -101,26 +96,11 @@ end
 -- iterate the inventory themselves, which is what keeps the per-resource entry
 -- shapes out of every companion resource.
 function InventorySnapshot(src)
-    local snapshot = {}
     local kind = inventoryType()
     if kind == 'ox_inventory' and started('ox_inventory') then
-        local items = exports.ox_inventory:GetInventoryItems(src)
-        if type(items) == 'table' then
-            for _, entry in pairs(items) do
-                if entry and entry.name then
-                    snapshot[entry.name] = (snapshot[entry.name] or 0) + (entry.count or entry.amount or 1)
-                end
-            end
-        end
-        return snapshot
+        return CisNormalize.itemSnapshot(exports.ox_inventory:GetInventoryItems(src))
     end
-    for _, entry in pairs(playerItems(src)) do
-        if entry and (entry.name or entry.item) then
-            local name = entry.name or entry.item
-            snapshot[name] = (snapshot[name] or 0) + (entry.amount or entry.count or 1)
-        end
-    end
-    return snapshot
+    return CisNormalize.itemSnapshot(playerItems(src))
 end
 
 -- The client is told the new state only after the inventory accepted the

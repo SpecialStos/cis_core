@@ -429,8 +429,10 @@ function Framework.GiveMoney(serverId, amount, moneyType)
         -- 'markedbills' is an ITEM on every framework this supports, not an
         -- account, so it is routed to the inventory with the value carried as
         -- metadata. Handing it to AddMoney instead would create an account
-        -- named markedbills that no shop and no ATM knows how to spend.
-        if moneyType == 'markedbills' then
+        -- named markedbills that no shop and no ATM knows how to spend. The
+        -- decision itself is shared with the client half through
+        -- CisNormalize.moneyRoute, so the two cannot disagree about it.
+        if CisNormalize.moneyRoute(moneyType) == 'inventory' then
             return exports['cis_libs']:InventoryAdd(serverId, 'markedbills', 1, { worth = amount })
         end
         -- Three attempts, in order of preference: the object method when a core
@@ -450,7 +452,7 @@ function Framework.GiveMoney(serverId, amount, moneyType)
             return ok and result and true or false
         end
     elseif provider == 'ESX' or provider == 'ESX-LEGACY' then
-        if moneyType == 'markedbills' then
+        if CisNormalize.moneyRoute(moneyType) == 'inventory' then
             return exports['cis_libs']:InventoryAdd(serverId, 'markedbills', 1, { worth = amount })
         end
         -- pcall, not a return-value check: ESX's addAccountMoney returns nothing
@@ -471,7 +473,7 @@ function Framework.RemoveMoney(serverId, amount, moneyType)
     end
     moneyType = moneyType or 'cash'
     if provider == 'QBCORE' or provider == 'QBOX' then
-        if moneyType == 'markedbills' then
+        if CisNormalize.moneyRoute(moneyType) == 'inventory' then
             return exports['cis_libs']:InventoryRemove(serverId, 'markedbills', 1)
         end
         if player.Functions and player.Functions.RemoveMoney then
@@ -484,7 +486,7 @@ function Framework.RemoveMoney(serverId, amount, moneyType)
             return ok and result and true or false
         end
     elseif provider == 'ESX' or provider == 'ESX-LEGACY' then
-        if moneyType == 'markedbills' then
+        if CisNormalize.moneyRoute(moneyType) == 'inventory' then
             return exports['cis_libs']:InventoryRemove(serverId, 'markedbills', 1)
         end
         local ok = pcall(function()
@@ -612,17 +614,12 @@ local function esxAccounts(player)
     local ok, accounts = pcall(function()
         return player.getAccounts()
     end)
-    if not ok or type(accounts) ~= 'table' then
+    if not ok then
         return nil
     end
-    local out = {}
-    for i = 1, #accounts do
-        local account = accounts[i]
-        if account and account.name then
-            out[account.name] = account.money
-        end
-    end
-    return out
+    -- Only the CALL is framework-specific. The list-to-map conversion is not,
+    -- so it lives in shared/normalize.lua with the rest of the shape reading.
+    return CisNormalize.accountMap(accounts)
 end
 
 -- One player, one shape, whichever framework is underneath. `money` is
@@ -642,7 +639,7 @@ function Framework.NormalizedPlayer(src)
     if player then
         if player.PlayerData and player.PlayerData.charinfo then
             local info = player.PlayerData.charinfo
-            name = ((info.firstname or '') .. ' ' .. (info.lastname or '')):gsub('^%s+', ''):gsub('%s+$', '')
+            name = CisNormalize.personName(info.firstname, info.lastname)
         elseif type(player.getName) == 'function' then
             local ok, value = pcall(function()
                 return player.getName()

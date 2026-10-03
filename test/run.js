@@ -47,6 +47,7 @@ function runFile(rel) {
 const SOURCES = [
   'shared/cis.lua',
   'shared/migrations.lua',
+  'shared/normalize.lua',
   'server/validate_config.lua',
   'server/state_rules.lua',
 ]
