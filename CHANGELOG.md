@@ -76,6 +76,15 @@ state the roadmap has been asking for since it was written.
 
 ### Fixed
 
+- **The ESX-LEGACY fallback could take the boot thread down.** ESX 1.10.10
+  turned `esx:getSharedObject` into an error(): its handler is literally
+  `function() error("...this event no longer exists!") end`. The fallback
+  triggered it unguarded, so on 1.10.10 an unguarded raise inside a thread
+  nobody awaits left the resource half-started and attributed the error to a
+  different file in the console. A raise now also STOPS the retry loop rather
+  than repeating it 60 times: silence means a build that has not finished
+  wiring, and an error means a build that has decided the event is gone.
+  Fixed in both the server and the client half.
 - **[ESX WAS COMPLETELY BROKEN] Every xPlayer call was missing its `self`.**
   ESX declares its player methods as `function self.addAccountMoney(accountName,
   money, reason)` -- declared against `self`, so `self` is the first DECLARED

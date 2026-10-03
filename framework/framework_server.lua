@@ -94,6 +94,38 @@ end
 -- export, ask cis_libs, or read the target's manifest metadata. Do not
 -- reintroduce a probe here.
 
+-- Ask the LEGACY esx:getSharedObject event for the shared object.
+--
+-- Guarded, because ESX 1.10.10 turned this event into an ERROR:
+--
+--   1.4.2 - 1.8.5  AddEventHandler('esx:getSharedObject', function(cb) cb(ESX) end)
+--   1.9.4           a handler that prints a warning and never calls cb
+--   1.10.10          a handler that RAISES: error("...this event no longer
+--                    exists!")
+--
+-- An unguarded TriggerEvent therefore does not degrade on 1.10.10 -- it takes
+-- the boot THREAD down, inside a thread nobody is awaiting, which leaves the
+-- resource half-started and attributes the error to a different file in the
+-- console. That is strictly worse than the failure it was avoiding.
+--
+-- A raise also means STOP, rather than retry for three seconds. Silence and an
+-- error are different answers: silence is a build that has not finished wiring
+-- yet and may answer in a moment, and an error is a build that has decided the
+-- event is gone. Sixty retries against a handler that raises 60 times buys
+-- nothing and prints 60 errors.
+local function askLegacyEsx()
+    local raised = nil
+    local ok = pcall(function()
+        TriggerEvent('esx:getSharedObject', function(shared)
+            ESX = shared
+        end)
+    end)
+    if not ok then
+        raised = true
+    end
+    return raised
+end
+
 local function detect()
     local configured = string.upper((Config and Config.Framework and Config.Framework.Type) or 'AUTO')
     customAdapter = loadCustomAdapter()
@@ -166,7 +198,9 @@ local function detect()
             if not ESX then
                 local deadline = GetGameTimer() + 3000
                 while ESX == nil and GetGameTimer() < deadline do
-                    TriggerEvent('esx:getSharedObject', function(shared) ESX = shared end)
+                    if askLegacyEsx() then
+                        break
+                    end
                     Wait(50)
                 end
             end
@@ -291,9 +325,9 @@ local function detect()
                 -- or never will.
                 local deadline = GetGameTimer() + 3000
                 while ESX == nil and GetGameTimer() < deadline do
-                    TriggerEvent('esx:getSharedObject', function(shared)
-                        ESX = shared
-                    end)
+                    if askLegacyEsx() then
+                        break
+                    end
                     Wait(50)
                 end
             end

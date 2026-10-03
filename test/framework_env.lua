@@ -574,8 +574,18 @@ function FrameworkEnv.installCisLibs()
     FrameworkEnv.export('RegisterCallback', function() return true end)
     FrameworkEnv.export('PublishJobUpdate', function() return true end)
     FrameworkEnv.export('PublishInventory', function() return true end)
-    FrameworkEnv.export('InventoryAdd', function() return true end)
-    FrameworkEnv.export('InventoryRemove', function() return true end)
+    -- Faithful to the real path, which is what makes a scenario's answer mean
+    -- something: the inventory service falls back to the FRAMEWORK's player
+    -- object, so with no framework there is nothing to add to and it answers
+    -- false. A stub that returned an unconditional true made "GiveItem answers
+    -- false in standalone mode" fail -- and it was the stub that was wrong, not
+    -- the resource, which is exactly the sort of thing these tests exist to
+    -- settle.
+    local function hasPlayer(src)
+        return CisFramework ~= nil and CisFramework.GetPlayer(src) ~= nil
+    end
+    FrameworkEnv.export('InventoryAdd', function(src) return hasPlayer(src) end)
+    FrameworkEnv.export('InventoryRemove', function(src) return hasPlayer(src) end)
     FrameworkEnv.export('InventoryHas', function() return false end)
     FrameworkEnv.export('GetOnlineJobCount', function() return 0 end)
     FrameworkEnv.export('GetCapabilities', function() return {} end)

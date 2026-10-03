@@ -117,11 +117,21 @@ local function detect()
                 end
             end
             if not ESX then
+                -- Guarded and, on a raise, abandoned. ESX 1.10.10 made
+                -- `esx:getSharedObject` an error(), so an unguarded trigger
+                -- does not degrade gracefully -- it kills the boot thread. See
+                -- askLegacyEsx in framework_server.lua for the full version of
+                -- this note; the rule is the same on both sides.
                 local deadline = GetGameTimer() + 3000
                 while ESX == nil and GetGameTimer() < deadline do
-                    TriggerEvent('esx:getSharedObject', function(obj)
-                        ESX = obj
+                    local ok = pcall(function()
+                        TriggerEvent('esx:getSharedObject', function(obj)
+                            ESX = obj
+                        end)
                     end)
+                    if not ok then
+                        break
+                    end
                     Wait(50)
                 end
             end
