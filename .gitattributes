@@ -1,0 +1,29 @@
+# Normalise line endings in the repository, not just in the working tree.
+#
+# Found by CLONING this repository and running the suite on the clone: it failed.
+#
+#   CALLBACKS.md is out of date. Run: node tools/gen-docs.js
+#
+# Nothing was out of date. `npm run test:docs` compares the committed file
+# against freshly generated output byte for byte, and a Windows checkout with
+# core.autocrlf=true hands it CRLF while the generator writes LF. The check
+# reports "stale" on a tree where nothing is stale.
+#
+# That is not cosmetic. A check that fails on a byte git itself considers
+# insignificant is a check people disable -- and then it stops catching the
+# drift it exists to catch, which is the exact failure it was written to
+# prevent. A generated-file gate that cries wolf is worse than no gate.
+#
+# `* text=auto eol=lf` makes LF the form in the repository AND in the working
+# tree on every platform, so generated output is byte-comparable everywhere.
+* text=auto eol=lf
+
+# Binary assets must never be line-ending translated.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.zip binary
+*.pdf binary
+*.lua.bak binary

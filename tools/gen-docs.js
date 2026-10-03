@@ -197,9 +197,29 @@ if (loaded.error) {
 
 const body = render(loaded.table)
 
+// LINE ENDINGS ARE NOT CONTENT.
+//
+// Found by cloning this repository and running the suite on the clone, which
+// reported "CALLBACKS.md is out of date" on a tree where nothing was. A Windows
+// checkout with core.autocrlf=true hands this function CRLF and the generator
+// writes LF, and a byte comparison calls that stale.
+//
+// `.gitattributes` fixes it at the repository level -- `* text=auto eol=lf` --
+// and that is the real fix. This is the second line of defence, because a
+// generated-file gate that fails on a byte git itself considers
+// insignificant is a gate people disable, and a disabled gate catches nothing.
+//
+// Built from char codes rather than a regex literal, because the characters
+// being replaced are CONTROL characters, and writing them as escapes in a
+// patch is how they get collapsed into real newlines by whatever is quoting
+// it -- which is exactly how the first two versions of this line broke.
+const CR = String.fromCharCode(13)
+const NL = String.fromCharCode(10)
+const normalise = (text) => text.split(CR + NL).join(NL).split(CR).join(NL)
+
 if (process.argv.includes('--check')) {
   const existing = fs.existsSync(outFile) ? fs.readFileSync(outFile, 'utf8') : ''
-  if (existing !== body) {
+  if (normalise(existing) !== normalise(body)) {
     console.error('CALLBACKS.md is out of date. Run: node tools/gen-docs.js')
     process.exit(1)
   }
