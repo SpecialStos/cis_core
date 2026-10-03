@@ -1,0 +1,4 @@
+s001_operators.lua S001
+s002_zero_indexed.lua S002
+s003_accidental_global.lua S003
+s004_shadowing.lua S004

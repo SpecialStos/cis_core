@@ -33,7 +33,18 @@ function walk(dir, out = []) {
   return out
 }
 
-const files = walk(root)
+const files = walk(root).filter((abs) => {
+  // test/static/broken/** holds files that are broken ON PURPOSE -- one per
+  // defect the static analyser exists to catch, and one of them contains `!=`,
+  // which is a syntax error by design. Scanning them reports the fixture's
+  // defect as ours, which is how a fixture directory starts being ignored
+  // rather than maintained.
+  //
+  // test/api/broken/** is not excluded because those fixtures are valid Lua:
+  // each one is a contract that must FAIL TO VALIDATE, not a file that must
+  // fail to parse.
+  return !abs.includes(`${path.sep}test${path.sep}static${path.sep}broken${path.sep}`)
+})
 let failed = 0
 let skipped = 0
 

@@ -34,6 +34,17 @@ jobs:
         # tests do -- no server, no assets, every push.
         run: npm test
 
+      - name: Prove the static analyser still catches things
+        # A checker that has only ever been seen to pass has not been tested.
+        # Four broken fixtures, each of which must still fail with its own
+        # code, plus one file whose only defects live inside comments and
+        # strings -- the negative case, without which the four could pass by
+        # reporting everything.
+        run: npm run test:static-selftest
+
+      - name: Static analysis
+        run: npm run test:static
+
       - name: Lint
         # `npm run test:all` covers this, but CI runs the steps separately on
         # purpose so a failure names the thing that failed. The lint step was
@@ -150,5 +161,5 @@ jobs:
               echo "$err"
               status=1
             fi
-          done < <(find . -name '*.lua' -not -path './node_modules/*')
+          done < <(find . -name '*.lua'                      -not -path './node_modules/*'                      -not -path './test/static/broken/*')
           exit $status
