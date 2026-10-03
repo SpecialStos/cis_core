@@ -102,6 +102,55 @@ return {
             realm = 'server',
             signature = '()',
         },
+
+        -- ---------------------------------------------------------- state
+        -- Every one of these derives its namespace from GetInvokingResource()
+        -- and takes no owner argument. That is the security property, not a
+        -- limitation: a store whose namespace is a parameter is a store any
+        -- resource can read and write for any other, and the only thing standing
+        -- between them is a check somebody eventually forgets to write.
+        StateSet = {
+            since = '1.1.0', ['until'] = false, stable = true, deprecated = false,
+            use = 'exports["cis_core"]:StateSet(key, value). Writes one JSON value into the calling resource\'s namespace. Returns true, or false and a reason: an unencodable value, an oversized one, or no database',
+            realm = 'server',
+            signature = '(key, value)',
+        },
+        StateGet = {
+            since = '1.1.0', ['until'] = false, stable = true, deprecated = false,
+            use = 'exports["cis_core"]:StateGet(key, fallback). The value, or `fallback` when unset. The fallback is returned on failure too, so an unavailable store answers the default rather than nil',
+            realm = 'server',
+            signature = '(key, fallback)',
+        },
+        StateAll = {
+            since = '1.1.0', ['until'] = false, stable = true, deprecated = false,
+            use = 'exports["cis_core"]:StateAll(). A fresh table of the calling resource\'s whole namespace, which the caller may mutate freely. nil and a reason when the store is unavailable',
+            realm = 'server',
+            signature = '()',
+        },
+        StateKeys = {
+            since = '1.1.0', ['until'] = false, stable = true, deprecated = false,
+            use = 'exports["cis_core"]:StateKeys(). The namespace\'s keys, sorted, so two calls answer the same way',
+            realm = 'server',
+            signature = '()',
+        },
+        StateDelete = {
+            since = '1.1.0', ['until'] = false, stable = true, deprecated = false,
+            use = 'exports["cis_core"]:StateDelete(key). Removing a key that is not set is true, not an error -- "make sure this is gone" is the operation most callers actually want',
+            realm = 'server',
+            signature = '(key)',
+        },
+        StateClear = {
+            since = '1.1.0', ['until'] = false, stable = true, deprecated = false,
+            use = 'exports["cis_core"]:StateClear(). Removes the whole namespace and returns how many rows went',
+            realm = 'server',
+            signature = '()',
+        },
+        GetStateSummary = {
+            since = '1.1.0', ['until'] = false, stable = true, deprecated = false,
+            use = 'exports["cis_core"]:GetStateSummary(). { available, reason, namespaces = { { owner, keys } } }, read from the database rather than from memory, so a restarted server reports what is really stored. No value is read, so no state is exposed by asking',
+            realm = 'server',
+            signature = '()',
+        },
     },
 
     -- Events this resource LISTENS for. It publishes none of its own, and

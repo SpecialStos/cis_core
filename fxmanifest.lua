@@ -79,7 +79,11 @@ server_scripts {
     'configs/discordLogs_config.lua',
     'framework/framework_server.lua',
     'server/inventory.lua',
+    'server/state_rules.lua',
     'server/migrations.lua',
+    -- After migrations.lua on purpose: the store asks CisMigrationRunner whether
+    -- its schema is there, and the runner is defined in that file.
+    'server/state.lua',
     'server/doctor.lua',
     'server/commands.lua',
     'server/initialize.lua',

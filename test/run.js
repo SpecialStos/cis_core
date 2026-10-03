@@ -48,6 +48,7 @@ const SOURCES = [
   'shared/cis.lua',
   'shared/migrations.lua',
   'server/validate_config.lua',
+  'server/state_rules.lua',
 ]
 
 // Every `test/*.lua` file is a suite, and none of them is listed by name. A

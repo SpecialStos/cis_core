@@ -162,6 +162,48 @@ function CisDoctor.environment()
         end
     end
 
+    -- -------------------------------------------------- the allow-list
+    -- An authorised resource that is not installed grants nothing today. It is
+    -- reported anyway, and the reason is the residual risk stated in
+    -- configs/security_config.lua: the grant is attached to a NAME, so a stale
+    -- entry becomes live the day a different resource is installed under that
+    -- name. That is not a hypothetical on a server where the operator renames
+    -- things while moving between frameworks, and "I did not know that name was
+    -- still on the list" is not an answer anyone can give after the fact.
+    --
+    -- The inverse is reported too, and it is the one that actually breaks
+    -- something: a resource the operator INSTALLED that is missing from the
+    -- list. Its mutating calls are being refused right now.
+    local authorised = type(Security) == 'table' and Security.AuthorizedResources or nil
+    if type(authorised) == 'table' then
+        local started, missing = {}, {}
+        for _, name in ipairs(authorised) do
+            if type(name) == 'string' then
+                if GetResourceState(name) == 'started' then
+                    started[#started + 1] = name
+                else
+                    missing[#missing + 1] = name
+                end
+            end
+        end
+        if #authorised == 0 then
+            line(env, 'DEGRADED', 'allow-list', 'empty -- NOBODY is authorised',
+                'every mutating call from another resource is refused, with the fix printed -- that is the '
+                    .. 'intended meaning of an empty list, not a bug; add the resources you own')
+        else
+            table.sort(started)
+            line(env, 'SET', 'allow-list', ('%d authorised, %d started'):format(#authorised, #started),
+                started[1] and ('running: %s'):format(table.concat(started, ', ')) or nil)
+            if #missing > 0 then
+                table.sort(missing)
+                line(env, 'SET', 'allow-list', ('%d authorised but not installed'):format(#missing),
+                    ('%s -- nothing is granted today, but a grant is attached to a NAME: delete the entries you '
+                        .. 'do not have so a different resource installed later cannot inherit them')
+                        :format(table.concat(missing, ', ')))
+            end
+        end
+    end
+
     -- ------------------------------------------------------------ migrations
     local applied = CisMigrationsApplied or {}
     local count = 0
@@ -171,6 +213,35 @@ function CisDoctor.environment()
     line(env, 'SET', 'migrations', ('%d recorded as applied'):format(count),
         count == 0 and 'no product has called exports["cis_core"]:Migrate() yet -- that is expected until you install one'
             or nil)
+
+    ----------------------------------------------------------- the state store
+    -- Called as a MODULE function, not through `exports['cis_core']`. Asking a
+    -- resource for one of its own exports is the self trap documented in
+    -- server/migrations.lua, and `GetInvokingResource()` inside that call is
+    -- not a thing worth depending on. The pcall is still there: on a server with
+    -- no driver this answers `available = false` with a reason, and on a server
+    -- where the store never started it must not take the whole doctor with it.
+    local okState, state = pcall(function()
+        return CisState.summary()
+    end)
+    if not okState or type(state) ~= 'table' then
+        line(env, 'SET', 'state store', 'did not answer',
+            'run `cis_core_doctor` again; if it persists, cis_core is not fully started')
+    elseif state.available then
+        local n = #state.namespaces
+        local detail = 'no product has written state yet'
+        if n > 0 then
+            local parts = {}
+            for _, ns in ipairs(state.namespaces) do
+                parts[#parts + 1] = ('%s (%d)'):format(ns.owner, ns.keys)
+            end
+            detail = table.concat(parts, ', ')
+        end
+        line(env, 'SET', 'state store', ('available, %d namespace(s)'):format(n), detail)
+    else
+        line(env, 'DEGRADED', 'state store', 'unavailable',
+            tostring(state.reason) .. ' -- every state export answers false until it is fixed')
+    end
 
     return env
 end

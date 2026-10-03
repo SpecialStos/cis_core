@@ -41,70 +41,130 @@ Security.Debug = false
 -- =============================================================================
 --  SECURITY.AuthorizedResources  --  READ THIS
 --
---  THE SHIPPED DEFAULT IS AN EMPTY LIST, AND ON A FRESH INSTALL AN EMPTY LIST
---  MEANS "NOBODY". No resource other than the platform itself may add a door,
---  break a door, or write a sync record. Every attempt from another resource
---  is refused.
+--  WHAT IS IN THIS LIST, AND WHY IT IS NOT EMPTY
 --
---  This is the intended default and it is not a bug. A new server has no
---  authorised callers yet, so the honest answer to "who may mutate doors?"
---  is nobody. Defaulting to allow-all instead would help nobody during setup and
---  would leave the exposure in place afterwards, which is the part that matters
---  at 3am.
+--  An authorised resource may call the MUTATING half of cis_libs: add a door,
+--  break a door, write a sync record, supply a capability. This list ships with
+--  the publisher's own products on it and nothing else, so a working install of
+--  cis_libs + cis_core + cis_keys works the moment you paste the `ensure`
+--  lines -- with no second edit, and with no support ticket about why your doors
+--  stopped responding.
 --
---  WHAT "NOBODY" COSTS YOU: if you have a housing, robbery or garage resource
---  that calls the doorlock exports, those calls start returning false and that
---  resource stops working. That is a five-line fix, listed below -- it is not a
---  reason to run allow-all.
+--  It used to ship EMPTY, on the reasoning that a new server has no authorised
+--  callers and "nobody" is the honest answer. That reasoning was sound and the
+--  outcome was not: every CIsoko product was refused by default, which means
+--  every install had to be repaired by hand before it worked, and the repair is
+--  invisible until something breaks. A secure default that has to be edited
+--  before the product functions is not a secure default, it is a broken
+--  install with a good story.
 --
---  ONE EXCEPTION, FOR EXISTING INSTALLS ONLY: if this resource has ALREADY run
---  on this server -- detected by a config file cis_libs previously wrote, or by
---  a store that already has rows -- the empty list keeps the older,
---  permissive behaviour instead, so an upgrade does not break a working server
---  overnight. You can check which way you fell with the cis_debug command in
---  the server console; it prints the posture on every boot either way. Run the `cis_debug`
---  command in the server console: it prints this posture on every boot either way.
+--  THE LINE IS VENDOR PRODUCTS, NOT "THINGS THAT LOOK LIKE THEM"
 --
---  TO AUTHORISE YOUR OWN RESOURCES, add one string per resource name:
+--  Everything below is ours, and everything below is either started or is a name
+--  no one else is using. That is the whole boundary. There is no wildcard, no
+--  prefix match and no "any resource whose name starts with cis_", so a
+--  third-party resource can never inherit a grant by being named similarly.
+--
+--  WHAT AN ENTRY BUYS, PRECISELY: the right to call mutating exports, and
+--  nothing else. It does not grant money, inventory or database access, it does
+--  not make the resource trusted by cis_core's config validator, and it does
+--  not survive into the client payload -- a player can never read this list.
+--
+--  ONE RESIDUAL RISK, STATED PLAINLY: an entry that is not installed grants
+--  nothing today, but if a DIFFERENT resource is later installed under that
+--  exact name it inherits the grant. That is why the list is our products and
+--  not "resources you might install later" -- and why `cis_core_doctor` prints
+--  every entry that is authorised but not started, so a stale entry is visible
+--  rather than latent.
+--
+--  TO TIGHTEN IT: delete the entries you do not have. To add your own resource,
+--  add one string per resource name:
 --
 --      Security.AuthorizedResources = {
---          "cis_storeRobberies",
 --          "cis_housing",
+--          "my_resource",
 --      }
 --
---  This needs no restart of the resources being listed -- only of cis_libs.
+--  To remove every grant -- a fully manual install -- set it to {} and add
+--  names as you install each one. This needs no restart of the resources being
+--  listed -- only of cis_libs.
+--
 --  A resource can ask before it acts, rather than guessing:
 --      if exports["cis_libs"]:InvokingAllowed() then ... end
 --  and that call returns false rather than refusing mid-action, so you can warn
 --  the player properly.
 -- =============================================================================
 Security.AuthorizedResources = {
-    -- "my_resource",
+    -- ------------------------------------------------------------ platform
+    'cis_libs',
+    'cis_core',
+    'cis_bridge',
+
+    -- ----------------------------------------------------------- wave 1
+    'cis_keys',
+    'cis_signal',
+    'cis_weather',
+    'cis_evidence',
+    'cis_identity',
+    'cis_dispatch',
+    'cis_medic',
+    'cis_electricity',
+
+    -- ----------------------------------------------------------- wave 2
+    'cis_inventory',
+    'cis_economy',
+    'cis_business',
+    'cis_stores',
+    'cis_dealership',
+    'cis_mechanic',
+    'cis_housing',
+
+    -- ----------------------------------------------------------- waves 3-4
+    'cis_phone',
+    'cis_drugs',
+    'cis_skills',
+    'cis_migrate',
+    'cis_admin',
 }
 
 -- ------------------------------------------------------------------- KICKING
 -- What happens when the library decides a player is cheating: either a boolean
 -- or a function(src, reason) for a kick of your own design.
 --
--- SAFE DEFAULT: the handler below, which kicks with a generic message.
+-- SAFE DEFAULT: false. LOG ONLY.
+--
+-- It shipped as `true`, and it was wrong for a resource whose headline feature
+-- is a framework abstraction. A player gets kicked from a platform they
+-- installed to get their framework bridged, on the strength of a heuristic
+-- another resource raised, and they were told a server owner had been informed
+-- when nothing had been. cis_libs documents this default as false and every
+-- other resource in the platform should match it: a library does not remove
+-- players from a server as a side effect of reporting something suspicious.
+--
+-- If you run an anti-cheat that wants enforcement, this is the one line:
+--
+--      Security.DropPlayer = cisAnticheatDropPlayer
+--
+-- It is written out at the bottom of this file, uncommented, so turning it on
+-- is one edit rather than a lookup.
 --
 -- A note on the message: it is deliberately generic, and it deliberately tells
 -- the player to contact the server owner. Naming the check that fired tells a
 -- person exactly which guard to look for, and guards are the first thing
 -- somebody wants to find. If you customise it, keep it that way.
 --
--- Setting this to false is a legitimate choice -- ban on your own terms
--- elsewhere, or log-only while you investigate -- but be deliberate: with
--- false, nothing stops the player at all, only the log entry survives.
+-- With false, nothing stops the player at all -- only the log entry survives, and
+-- it is written wherever your logging goes. Ban on your own terms elsewhere, or
+-- read the log before you decide.
 --
 -- `src` is the player's server id, and `reason` is a short internal string.
 -- Whatever you return is ignored; the library records the kick as having
 -- happened either way.
-Security.DropPlayer = true
+Security.DropPlayer = false
+
 function cisAnticheatDropPlayer(src, reason)
     DropPlayer(src, "cis_libs: Kicked. If you believe this is a mistake, please contact the server owner.")
 end
 
--- Hand the custom handler above to the library. Without this line the boolean
--- from above is what the library sees, and the function is never called.
-Security.DropPlayer = cisAnticheatDropPlayer
+-- TO ENFORCE: uncomment the line below. It is the whole of it.
+-- Security.DropPlayer = cisAnticheatDropPlayer

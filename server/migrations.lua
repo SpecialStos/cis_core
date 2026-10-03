@@ -23,6 +23,21 @@ local loaded = false
 -- shifted and raises nothing.
 CisMigrationsApplied = applied
 
+-- The runner itself, as a table rather than a pair of locals.
+--
+-- It used to be `exports('Migrate', ...)` with everything above it private to
+-- this file, which meant cis_core could only apply migrations by calling its own
+-- export -- and calling your own export is the self trap documented above. So
+-- the resource that OWNS a table could not create that table through the code
+-- that is supposed to create it, and the only alternative was for server/state.lua
+-- to hand-roll its own CREATE TABLE outside the ledger. That table would then
+-- not be in the ledger, so it would not be recorded, so it would be created
+-- again on every boot by code that had no idea whether it already existed.
+--
+-- `exports('Migrate', ...)` is now a two-line forwarder to this. The exported
+-- name and signature are unchanged, so no consumer sees a difference.
+CisMigrationRunner = {}
+
 local function libs()
     return exports['cis_libs']
 end
@@ -134,9 +149,11 @@ end
 --- is a product that cannot work, and it needs to be able to say so and carry
 --- on booting -- a raised error here would take the whole resource down and
 --- leave the operator with a stack trace instead of a sentence.
-exports('Migrate', function(owner, list)
-    if not CisMigrations.validate(list) then
-        return false, { error = 'invalid migration list' }
+--- Apply a product's migrations. See `CisMigrationRunner.run`.
+function CisMigrationRunner.run(owner, list)
+    local valid, why = CisMigrations.validate(list)
+    if not valid then
+        return false, { error = ('invalid migration list: %s'):format(tostring(why)) }
     end
 
     -- Three values, not two. `ensureLedger` answers (true) on success and
@@ -179,6 +196,28 @@ exports('Migrate', function(owner, list)
         print(('[cis_core] %s supplied no migrations'):format(tostring(owner)))
     end
     return true, result
+end
+
+--- Whether the ledger could be read. The state store asks this rather than
+--- assuming, so a server with no database answers "unavailable" instead of
+--- writing to a table it assumed existed.
+function CisMigrationRunner.ready()
+    local called, ok = pcall(ensureLedger)
+    return called == true and ok == true
+end
+
+--- Apply a product's migrations.
+---
+--- @param owner   string  the resource name, used in log lines
+--- @param list    table   { { id, statements } }
+--- @return boolean ok, table result { applied = n, skipped = n, failed = id|nil }
+---
+--- Returns rather than raises, always. A product whose schema fails to apply
+--- is a product that cannot work, and it needs to be able to say so and carry
+--- on booting -- a raised error here would take the whole resource down and
+--- leave the operator with a stack trace instead of a sentence.
+exports('Migrate', function(owner, list)
+    return CisMigrationRunner.run(owner, list)
 end)
 
 --- Which migrations are recorded as applied. For the debug command and for a
@@ -191,4 +230,62 @@ exports('AppliedMigrations', function()
     end
     table.sort(out)
     return out
+end)
+
+-- =============================================================================
+--  cis_core's OWN schema
+--
+--  This resource is the part of the platform allowed to hold data, and it holds
+--  two things: the ledger above, and the state store below. Both are declared
+--  HERE rather than in a CREATE TABLE inside the module that needs them, because
+--  a table created outside the ledger is a table nothing records -- so it is
+--  recreated on every boot by code that cannot tell whether it already exists,
+--  and an operator who drops it by hand gets it back with no event.
+--
+--  Ids are numbered and stable. An id that is renamed after it has been applied
+--  silently re-runs that migration, which is why the number is in the string and
+--  not in a comment.
+-- =============================================================================
+local OWN_MIGRATIONS = {
+    {
+        id = '001_cis_state',
+        statements = {
+            -- The value is LONGTEXT, not JSON: the column holds an ENCODED value
+            -- and the encoding is this resource's business, not the schema's. A
+            -- JSON column would silently truncate anything over the driver's
+            -- limit on some versions and hard-error on others, and the symptom
+            -- would be a state value that comes back empty for one player and not
+            -- the next.
+            --
+            -- updated_at is not decoration: it is what makes "this server was
+            -- restored from four hours ago" answerable, and it is the only way to
+            -- tell a stale cache from a stale row.
+            'CREATE TABLE IF NOT EXISTS cis_state ('
+                .. 'owner VARCHAR(64) NOT NULL, '
+                .. 'k VARCHAR(64) NOT NULL, '
+                .. 'v LONGTEXT NULL, '
+                .. 'updated_at BIGINT NOT NULL DEFAULT 0, '
+                .. 'PRIMARY KEY (owner, k)'
+                .. ') DEFAULT CHARSET=utf8mb4',
+        },
+    },
+}
+
+CreateThread(function()
+    if not exports['cis_libs']:WaitReady(15000) then
+        print('[cis_core] cis_libs never became ready; the state store schema will not be applied')
+        return
+    end
+    local ok, result = CisMigrationRunner.run('cis_core', OWN_MIGRATIONS)
+    if not ok then
+        -- Said plainly, because everything downstream depends on it. A state
+        -- write against a missing table does not raise -- the driver answers nil
+        -- -- so without this line the store simply stops working with no event.
+        print(('[cis_core] the state store is NOT available: %s'):format(
+            tostring(result and (result.error or result.reason) or 'unknown reason')))
+        print('[cis_core] exports.StateSet / StateGet / StateAll will answer false until this is fixed')
+        return
+    end
+    print(('[cis_core] state store schema ready (%d applied, %d already current)'):format(
+        result.applied, result.skipped))
 end)
