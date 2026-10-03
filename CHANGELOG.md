@@ -76,6 +76,30 @@ state the roadmap has been asking for since it was written.
 
 ### Fixed
 
+- **[ESX WAS COMPLETELY BROKEN] Every xPlayer call was missing its `self`.**
+  ESX declares its player methods as `function self.addAccountMoney(accountName,
+  money, reason)` -- declared against `self`, so `self` is the first DECLARED
+  parameter. All seven of them were called here with a dot, which feeds the
+  first real argument into `self`: `getGroup()` gets `self = nil` and RAISES;
+  `addAccountMoney('cash', 100)` gets `self = 'cash'` and `money = nil`;
+  `setJob('police', 3)` gets `newJob` = the number 3; `getName()` and
+  `getAccounts()` RAISE. So on ESX, money did not work, job changes did not
+  work, permissions raised, and the character name was unavailable.
+  `GiveMoney` is wrapped in a pcall and returned false, which reads exactly like
+  a declined transaction. QBCore is the OPPOSITE convention -- its `Functions`
+  is a table, the implicit self is that table, and a dot call is already
+  correct -- which is why this survived: the file had adopted QBCore's rule for
+  both frameworks.
+- **`NormalizedPlayer().metadata` was nil on every ESX server.** `get('metadata')`
+  asks `self.variables['metadata']`, and metadata lives in `self.metadata` --
+  two separate tables. The field was present, correctly typed, and always empty,
+  so a consumer checking `metadata.hadcuffed` took the "not handcuffed" branch
+  forever with nothing saying why.
+- **`GetPlayers()` returned two different shapes.** The QBCore branch returned
+  player objects; the ESX branch returned `ESX.GetPlayers()`, which since 1.9.2
+  *is* the FiveM native and answers source-id strings. One method, two shapes,
+  and the bug that produced lived in the consumer, on a platform its author
+  never tested.
 - **[SECURITY] A client could make another player receive a job they did not
   have.** Every server-side handler read the player source out of the *event
   payload*, and in FiveM a client can `TriggerServerEvent` with any name and any
