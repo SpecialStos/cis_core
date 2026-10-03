@@ -210,17 +210,30 @@ function CisState.set(ownerName, key, value)
             ('INSERT INTO %s (owner, k, v, updated_at) VALUES (?, ?, ?, ?)'):format(TABLE),
             { ownerName, key, encoded, now })
         if id == nil then
-            -- Almost always a key longer than the column, or an encoding the
-            -- driver refused. Neither raises, so this line is the only evidence
-            -- the caller gets that the write did not happen.
-            return false, ('the value was not written -- the INSERT was refused (key %q, %d bytes encoded)')
-                :format(key, #encoded)
+            -- TWO CAUSES, BOTH NAMED, because the driver's SELECT above answers
+            -- nil for "no such row" AND for "the query failed" -- one value for
+            -- two states. The old message blamed the key, so an operator with a
+            -- dropped connection was told to shorten a key that was fine. That
+            -- is precisely the "single least useful diagnostic" this file's
+            -- header names, and it took a whole two-call upsert to get there.
+            return false, ('the value was not written: the row could not be read AND the insert was refused '
+                .. '(key %q, %d bytes encoded). Either the SELECT failed -- check the database -- or the driver '
+                .. 'refused the insert'):format(key, #encoded)
         end
     end
 
     local values = load(ownerName)
     if values then
         values[key] = value
+    else
+        -- The row IS durable; this process's cache is not. Forgetting the
+        -- namespace makes the next read re-query rather than answer a stale
+        -- fallback for a key that was just written -- read-your-writes is
+        -- broken for exactly one call otherwise, and only on a fresh boot
+        -- with a database that is having a moment.
+        loaded[ownerName] = nil
+        cache[ownerName] = nil
+        return true, 'written, but the cache could not be refreshed -- the next read will re-query'
     end
     return true
 end

@@ -93,10 +93,34 @@ end
 -- would be refusing something harmless. What it does not permit is a table that
 -- contains itself, which is the case that would otherwise walk until the stack
 -- gave out and take the resource down instead of returning an error.
-local function walk(value, depth, path, ancestors)
+local function walk(value, depth, path, ancestors, budget)
     local t = type(value)
 
-    if t == 'nil' or t == 'boolean' or t == 'string' then
+    if t == 'nil' or t == 'boolean' then
+        return true
+    end
+
+    if t == 'string' then
+        -- THE SIZE CHECK HAPPENS HERE, DURING THE WALK, NOT AFTER ENCODING.
+        --
+        -- `LIMITS.VALUE_BYTES` read like a memory bound and was not one. The
+        -- entry and depth caps bound STRUCTURE -- 256 entries, 8 levels -- and
+        -- said nothing about how big those entries were. A value of 256
+        -- megabyte strings passed the walk, was then handed to `json.encode`,
+        -- which materialises the whole thing as one string, and only then
+        -- reached `encodedSize` and refused it. Hundreds of megabytes allocated
+        -- inside one call to reject a value the rules had already decided to
+        -- reject.
+        --
+        -- Counting bytes as they are met means the refusal happens at the
+        -- megabyte that crosses the line rather than at the end of a walk that
+        -- was always going to fail. `encodedSize` stays as the backstop for
+        -- JSON quoting, which adds bytes the walk never saw.
+        budget.bytes = budget.bytes + #value
+        if budget.bytes > CisStateRules.LIMITS.VALUE_BYTES then
+            return false, ('%s and everything before it is already %d bytes; the limit is %d')
+                :format(path, budget.bytes, CisStateRules.LIMITS.VALUE_BYTES)
+        end
         return true
     end
 
@@ -156,7 +180,7 @@ local function walk(value, depth, path, ancestors)
             return false, ('%s is keyed by %s, and keys must be strings or numbers'):format(path, type(k))
         end
 
-        local ok, why = walk(v, depth + 1, childPath, ancestors)
+        local ok, why = walk(v, depth + 1, childPath, ancestors, budget)
         if not ok then
             ancestors[value] = nil
             return false, why
@@ -170,7 +194,10 @@ end
 --- Is this a storable value?
 --- @return boolean ok, string|nil reason
 function CisStateRules.value(v)
-    return walk(v, 1, 'the value', {})
+    -- Depth 0 for the ROOT, so `LIMITS.DEPTH = 8` permits eight levels of
+    -- nesting rather than seven. The old code started at 1 and only tested
+    -- tables, so a document reading "nesting depth 8" admitted seven.
+    return walk(v, 0, 'the value', {}, { bytes = 0 })
 end
 
 --- Does an ENCODED value fit the column?

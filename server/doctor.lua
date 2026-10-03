@@ -102,11 +102,27 @@ function CisDoctor.environment()
     local configured = Config and Config.Framework and Config.Framework.Type or 'unknown'
 
     local caps = {}
+    local capsAnswered = false
     local okCaps, result = pcall(function()
         return exports['cis_libs']:GetCapabilities()
     end)
     if okCaps and type(result) == 'table' then
         caps = result
+        capsAnswered = true
+    end
+
+    -- WHETHER THE CALL ANSWERED, not only what it said.
+    --
+    -- `caps` is `{}` when GetCapabilities raises or returns a non-table, so a
+    -- cis_libs failure and a genuinely absent framework look identical here --
+    -- and the operator was told "the framework this config names is not
+    -- started, start it, or set AUTO". The actual cause was a library that did
+    -- not answer, and following the printed fix changes nothing.
+    if not capsAnswered then
+        line(env, 'DEGRADED', 'framework', 'cis_libs:GetCapabilities did not answer, so no framework could be reported',
+            'this is a cis_libs problem, not a missing framework -- run `cis_debug` in the console for the '
+                .. 'library-side view, and check that cis_libs is not erroring on start')
+        return nil
     end
 
     local owner = caps.framework
@@ -252,7 +268,10 @@ function CisDoctor.environment()
     if not okState or type(state) ~= 'table' then
         line(env, 'SET', 'state store', 'did not answer',
             'run `cis_core_doctor` again; if it persists, cis_core is not fully started')
-    elseif state.available then
+    elseif state.available and type(state.namespaces) == 'table' then
+        -- The `type` guard is not paranoia. The pcall above makes this block
+        -- LOOK guarded end to end, and `#nil` would raise and kill the report
+        -- half-printed -- which is the worst time for a diagnostic to stop.
         local n = #state.namespaces
         local detail = 'no product has written state yet'
         if n > 0 then
@@ -311,7 +330,7 @@ function CisDoctor.bootReport()
     -- that just told them. The one thing that IS fatal -- cis_libs missing --
     -- is reported by environment() and the boot thread above already returned.
     if not ok then
-        print('  cis_core: carrying on anyway. Every setting above falls back to its documented default.')
+        print('  cis_core: carrying on anyway. Every line above names its own fix.')
     end
 
     return report

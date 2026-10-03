@@ -43,7 +43,18 @@ check(CisFramework.GiveMoney(1, 100, 'cash') == false, 'GiveMoney answers false'
 check(CisFramework.RemoveMoney(1, 100, 'cash') == false, 'RemoveMoney answers false')
 check(CisFramework.GiveItem(1, 'water', 1) == false, 'GiveItem answers false')
 check(CisFramework.RemoveItem(1, 'water', 1) == false, 'RemoveItem answers false')
-check(type(CisFramework.GetPlayers()) == 'table', 'GetPlayers still answers a table')
+-- ONE SHAPE, INCLUDING HERE. The standalone branch used to return the native,
+-- which is an array of source-id STRINGS -- a third shape, on the one branch an
+-- operator reaches precisely because something is already wrong.
+local players = CisFramework.GetPlayers()
+check(type(players) == 'table', 'GetPlayers still answers a table')
+check(#players == 0, 'and is empty when nobody is connected')
+Env.connect({ 1 })
+local withOne = CisFramework.GetPlayers()
+check(type(withOne) == 'table' and #withOne == 1, 'lists a connected player even with no framework')
+check(withOne[1] ~= nil and type(withOne[1]) == 'table',
+    'and the entry is an OBJECT, like every other framework branch')
+check(withOne[1].id == 1, 'carrying the source')
 
 -- NormalizedPlayer is the one a consumer reads, and it must be a table even
 -- when there is nothing behind it.

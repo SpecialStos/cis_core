@@ -116,6 +116,6 @@ RegisterCommand('cis_core_doctor', function(src)
     CisDoctor.printReport(('doctor -- %s'):format(CisConfig.summary(report)), lines)
 
     if not ok then
-        print('cis_core: nothing above blocks the server. The ERROR lines are settings that fell back to a default.')
+        print('cis_core: nothing above blocks the server. Every ERROR above names its own fix.')
     end
 end, true)

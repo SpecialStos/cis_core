@@ -135,6 +135,43 @@ check(tostring(whySize):find('16384', 1, true) ~= nil, 'the size refusal quotes 
 check(CisStateRules.encodedSize(string.rep('x', 16384)) == true, 'exactly at the limit is accepted')
 check(CisStateRules.encodedSize(nil) == false, 'a non-string encoding is refused')
 
+-- ============================================================ bytes DURING the walk
+-- The size limit has to bite while the value is being examined, not after it
+-- has been encoded.
+--
+-- 256 entries x 8 levels, each holding a large string, passed every STRUCTURAL
+-- limit and was then handed to json.encode -- which materialises the whole
+-- thing as one string -- before encodedSize refused it. Hundreds of megabytes
+-- allocated inside one call to reject a value the rules had already decided
+-- to reject.
+local huge = {}
+for i = 1, 40 do
+    huge['key' .. i] = string.rep('x', 8192)
+end
+local okHuge, whyHuge = CisStateRules.value(huge)
+check(okHuge == false, 'a value over the byte limit is refused')
+check(type(whyHuge) == 'string' and whyHuge:find('bytes', 1, true) ~= nil,
+    'and the refusal is about BYTES, not entries')
+check(tostring(whyHuge):find(tostring(CisStateRules.LIMITS.VALUE_BYTES), 1, true) ~= nil,
+    'and quotes the limit')
+
+-- The refusal names the element that crossed the line, so it is actionable.
+check(tostring(whyHuge):find('key', 1, true) ~= nil,
+    'and the path to the element that crossed it')
+
+-- And it refuses EARLY: a value that would be gigabytes is refused without
+-- being walked to the end.
+local enormous = {}
+for i = 1, 2000 do
+    enormous['k' .. i] = string.rep('y', 16384)
+end
+local okEnormous = CisStateRules.value(enormous)
+check(okEnormous == false, 'a value of 32MB is refused rather than walked to the end')
+
+-- Just under the limit is still accepted -- the check is a ceiling, not a ban.
+local justUnder = string.rep('z', CisStateRules.LIMITS.VALUE_BYTES - 10)
+check(CisStateRules.value(justUnder) == true, 'a string just under the limit is still accepted')
+
 -- ============================================================ the combined check
 -- Key first. A bad key is the caller's bug at the call site, and a value error
 -- that does not mention the key is half an answer.

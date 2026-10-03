@@ -76,6 +76,38 @@ state the roadmap has been asking for since it was written.
 
 ### Fixed
 
+- **The state size limit bounded structure, not bytes.** 256 entries x 8
+  levels of large strings passed every check, was handed to `json.encode` --
+  which materialises the whole thing as one string -- and only then reached the
+  byte check. Hundreds of megabytes allocated inside one call to reject a value
+  the rules had already decided to reject. Bytes are now counted as the walk
+  meets them, so the refusal happens at the megabyte that crosses the line.
+  `encodedSize` remains as the backstop for JSON quoting.
+- **`SetPlayerJob` published a job ESX had refused.** ESX's `setJob` checks
+  `DoesJobExist` and returns normally having changed nothing, and the publish
+  announced the REQUESTED job regardless -- so the histogram and the player's
+  own client learned a job that was never granted. It now publishes what the
+  framework actually stored.
+- **`GetPlayers()` returned a third shape under `NONE`** -- source-id strings,
+  from the native -- on the one branch an operator reaches precisely because
+  something is already wrong. It now returns normalised objects like the other
+  two branches.
+- **A typo fix could name the wrong key.** `Typ` is one edit from both
+  `Framework.Type` and `Framework.Database.Type`; the two tied, and
+  lexicographic order sent the operator to the DEEPER one. Ties now resolve to
+  the shallower path, and the suggestion is stable across runs -- it was
+  iterating raw `pairs` order, which is the one place this file's own
+  determinism rule did not hold.
+- **The state store reported a dropped connection as a key too long.** The
+  driver's SELECT answers nil for "no such row" and for "the query failed", and
+  the two-call upsert blamed the key -- so an operator with a database outage
+  was told to shorten a key that was fine. Both causes are named now.
+- **The doctor reported a cis_libs failure as "your framework is not
+  started."** `GetCapabilities` raising and a genuinely absent framework looked
+  identical, and the printed fix changed nothing. They are separate lines now.
+- Duplicate allow-list entries were under-reported (`{A, A, A}` reported one),
+  and the edit-distance prune was narrower than the acceptance threshold it
+  guarded, so a near-miss key was silently never suggested.
 - **[SECURITY] The job histogram was writable by any client.** `resolveSource`
   hardened who an event was *about*; it said nothing about *what* the event
   claimed, and both job-update handlers read the job straight out of the payload.

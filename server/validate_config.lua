@@ -102,10 +102,19 @@ end
 -- Levenshtein, bounded. Only ever used to suggest a key that was probably
 -- meant, and only over short identifiers, so the cost is irrelevant and the
 -- benefit is a fix line that names the right key instead of saying "unknown".
-local function editDistance(a, b)
+-- `limit` is the caller's ACCEPTANCE threshold rather than a constant.
+--
+-- This pruned at a hardcoded 3 while `suggestKey` accepts a match up to
+-- `max(2, floor(#candidate/4)+1)` -- which is 4 for a twelve-character
+-- candidate and 5 for a sixteen-character one. A key whose true distance was 4
+-- or 5, but whose length differed by more than 3, was silently never suggested
+-- and the caller could not tell "no match" from "pruned". Pruning against the
+-- real limit is exact: a candidate further apart than the limit cannot qualify.
+local function editDistance(a, b, limit)
     local la, lb = #a, #b
-    if math.abs(la - lb) > 3 then
-        return 99
+    local ceiling = limit or 3
+    if math.abs(la - lb) > ceiling then
+        return ceiling + 1
     end
     local prev, cur = {}, {}
     for j = 0, lb do
@@ -142,9 +151,12 @@ local function suggestKey(name, candidates)
     end
     local best, bestScore
     for _, c in ipairs(candidates) do
-        local d = editDistance(lower, c:lower())
         local limit = math.max(2, math.floor(#c / 4) + 1)
-        if d <= limit and (not bestScore or d < bestScore) then
+        local d = editDistance(lower, c:lower(), limit)
+        -- `<=` on the score too, so two candidates at the same distance are
+        -- resolved by the SORTED order rather than by whichever the loop
+        -- reached first. Determinism is the whole point of this function.
+        if d <= limit and (not bestScore or d < bestScore or (d == bestScore and c < best)) then
             best, bestScore = c, d
         end
     end
@@ -310,18 +322,46 @@ end
 --
 -- Declared above its caller for the same reason as everything else here: a
 -- local declared after a function that references it resolves to a GLOBAL.
+-- Which of two equally-distant suggestions is the better one?
+--
+-- SHALLOWER FIRST, and this is not a style preference. `Typ` is one edit from
+-- BOTH `Framework.Type` and `Framework.Database.Type`, and the two tie. Ordered
+-- lexicographically, "Framework.Database.Type" wins -- it sorts first, because
+-- 'D' < 'T' -- so a typo of `Framework.Type` was reported as a typo of
+-- `Framework.Database.Type`. The operator is sent to a deeper key that is
+-- equally plausible and, for a typo in the framework block, plainly not what
+-- they meant. The shallower path is the one they had in mind far more often.
+--
+-- Lexicographic second, so the answer is still deterministic: two equally
+-- shallow candidates are resolved by name rather than by hash order.
+local function closer(candidate, incumbent, d, bestScore)
+    if not bestScore then return true end
+    if d ~= bestScore then return d < bestScore end
+    local function depth(p) return select(2, p:gsub('%.', '')) end
+    local dc, di = depth(candidate), depth(incumbent)
+    if dc ~= di then return dc < di end
+    return candidate < incumbent
+end
+
 local function suggestPath(key)
     local best, bestScore
-    for prefix, names in pairs(KNOWN_KEYS) do
-        for _, name in ipairs(names) do
+    local lower = key:lower()
+    -- SORTED KEYS, NOT `pairs`. The rule this file states about vim_keys --
+    -- "a diagnostic that names a different 'did you mean' on two boots of the
+    -- same config is a diagnostic nobody trusts" -- applies here too, and this
+    -- function was the one place it did not hold: it iterated the same
+    -- KNOWN_KEYS table through raw hash order while every other suggestion path
+    -- went through a sorted list.
+    for _, prefix in ipairs(vim_keys(KNOWN_KEYS)) do
+        for _, name in ipairs(KNOWN_KEYS[prefix]) do
             local path = prefix == '' and name or (prefix .. '.' .. name)
             local leaf = path:match('([^%.]+)$')
-            if leaf:lower() == key:lower() then
+            if leaf:lower() == lower then
                 return path
             end
-            local d = editDistance(key:lower(), leaf:lower())
             local limit = math.max(2, math.floor(#leaf / 4) + 1)
-            if d <= limit and (not bestScore or d < bestScore) then
+            local d = editDistance(lower, leaf:lower(), limit)
+            if d <= limit and closer(path, best, d, bestScore) then
                 best, bestScore = path, d
             end
         end
@@ -515,7 +555,11 @@ local function validateSecurity(security, report)
                 add(report.info, 'CFG_AUTH_DUPLICATE', ('Security.AuthorizedResources[%d]'):format(i),
                     ('is %q, which is already in the list'):format(entry),
                     'harmless, but remove the duplicate')
-                seen[entry] = nil
+                -- NOT cleared. `seen[entry] = nil` turned the set into a
+                -- "was the previous one this" flag, so {A, A, A} reported ONE
+                -- duplicate and {A, A, A, A} reported two when three exist --
+                -- wrong in the only direction that matters for a list an
+                -- operator is editing by hand.
             else
                 seen[entry] = true
             end

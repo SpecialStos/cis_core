@@ -442,6 +442,22 @@ function Framework.GetPlayers()
     if provider == 'QBCORE' and QBCore and QBCore.Functions then
         return QBCore.Functions.GetPlayers()
     end
+    -- The NONE branch used to return the native, which is an array of SOURCE
+    -- ID STRINGS -- the third shape this function exists to eliminate, on the
+    -- one branch an operator reaches precisely because something is already
+    -- wrong. It answers the same shape as the other two instead, built from the
+    -- same NormalizedPlayer a consumer would call, so "who is online, when no
+    -- framework is loaded" has an answer rather than a different type.
+    if provider == 'NONE' or Config and Config.Framework and Config.Framework.Type == 'NONE' then
+        local out = {}
+        for _, id in ipairs(GetPlayers() or {}) do
+            local src = tonumber(id)
+            if src then
+                out[#out + 1] = Framework.NormalizedPlayer(src)
+            end
+        end
+        return out
+    end
     if (provider == 'ESX' or provider == 'ESX-LEGACY') and ESX then
         local out = {}
         for _, id in ipairs(ESX.GetPlayers() or {}) do
@@ -702,7 +718,17 @@ function Framework.SetPlayerJob(serverId, job, grade)
     elseif provider == 'ESX' or provider == 'ESX-LEGACY' then
         player:setJob(job, grade)
     end
-    exports['cis_libs']:PublishJobUpdate({ name = job, grade = grade }, serverId)
+    -- WHAT THE FRAMEWORK STORED, not what was asked for.
+    --
+    -- ESX's setJob checks `DoesJobExist` and returns NORMALLY having changed
+    -- nothing -- a print, not an error. Publishing `{ name = job, grade = grade }`
+    -- regardless therefore taught the histogram and the player's own client
+    -- about a job that was never granted, which is the kind of thing an
+    -- operator discovers as "the job system is lying".
+    local stored = Framework.GetPlayerJob(serverId)
+    if type(stored) == 'table' and type(stored.name) == 'string' and #stored.name > 0 then
+        exports['cis_libs']:PublishJobUpdate(stored, serverId)
+    end
 end
 
 -- Every permission check in the library funnels here, and the QBCore and qbx

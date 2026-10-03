@@ -181,6 +181,34 @@ check(misplacedProblem ~= nil, 'a key in the wrong table is reported')
 check(misplacedProblem ~= nil and tostring(misplacedProblem.fix):find('Framework.Zones', 1, true) ~= nil,
     'the wrong-table fix names where the key belongs')
 
+-- TWO KEYS CAN BE ONE EDIT APART, AND THE SHALLOWER ONE IS THE ANSWER.
+--
+-- `Typ` is one edit from both `Framework.Type` and `Framework.Database.Type`,
+-- and the two tie. Ordered lexicographically the DEEPER path sorts first ('D'
+-- is less than 'T'), so the fix pointed an operator at a deeper key than the
+-- one they had in mind -- and both are plausible, which is exactly what makes
+-- it unhelpful.
+local ambiguous = goodConfig()
+ambiguous.Framework.Typ = 'QBCORE'
+local _, reportAmbiguous = CisConfig.validate(ambiguous, goodSecurity())
+local ambiguousFix = findProblem(reportAmbiguous, 'Config.Framework.Typ')
+check(ambiguousFix ~= nil
+    and tostring(ambiguousFix.fix):find('Config.Framework.Type --', 1, true) ~= nil,
+    'an ambiguous typo is resolved to the SHALLOWER path, not the alphabetically first one')
+
+-- And the suggestion is STABLE. Two boots of the same config must not name two
+-- different keys -- which is the rule this file states about vim_keys, and the
+-- one place it did not hold.
+local firstFix
+local stable = true
+for _ = 1, 5 do
+    local _, again = CisConfig.validate(ambiguous, goodSecurity())
+    local fix = tostring(findProblem(again, 'Config.Framework.Typ').fix)
+    if firstFix == nil then firstFix = fix end
+    if fix ~= firstFix then stable = false end
+end
+check(stable, 'the suggestion is identical on every run -- hash order must not decide it')
+
 -- ================================================================== security
 local secBad = goodSecurity()
 secBad.AuthorizedResources = 'cis_keys'
