@@ -52,6 +52,12 @@ jobs:
         # run in its history was green, and the linter had never run once.
         run: npm run test:luacheck
 
+      - name: The generated docs must match api.lua
+        # CALLBACKS.md is generated from the contract. If it is stale, the doc
+        # and the code disagree and a reader believes the doc -- which is what a
+        # table looks like. Regenerate with `npm run gen:docs`.
+        run: npm run test:docs
+
       - name: Validate api.lua against the registered surface
         # api.lua is a contract, not a comment. The validator reads what the
         # resource actually registers -- names and parameter lists, out of the

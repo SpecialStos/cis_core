@@ -116,7 +116,9 @@ actually registers.
 
 | | |
 |---|---|
+| [`CALLBACKS.md`](CALLBACKS.md) | **Generated** from `api.lua`; every export, event and command. CI fails if it is stale |
 | [`DOCUMENTATION.md`](DOCUMENTATION.md) | Every capability, config key and contract |
+| [`sql/cis_core.sql`](sql/cis_core.sql) | The two tables, for provisioning by hand |
 | [`MIGRATION.md`](MIGRATION.md) | Upgrading from 1.0.x, and what it costs you |
 | [`CHANGELOG.md`](CHANGELOG.md) | Keep a Changelog format, with the reasoning |
 | [`SECURITY.md`](SECURITY.md) | Trust model, what is enforced, how to report |

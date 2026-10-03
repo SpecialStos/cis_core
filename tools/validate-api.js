@@ -89,7 +89,17 @@ function readValue(L) {
       lua.lua_pop(L, 1)
       return null
     case lua.LUA_TBOOLEAN: {
-      const b = lua.lua_toboolean(L, -1) === 1
+      // fengari's lua_toboolean returns a JS BOOLEAN, not 0/1. `=== 1` is
+      // therefore always false, which read every boolean in api.lua as `false`
+      // and silently disabled the two checks that depend on it: the whole
+      // `until` block (`if (meta.until !== false && ...)`, which never
+      // entered) and both deprecation checks. A contract with `until = "0.9.0"`
+      // -- a removal major BEFORE its `since` -- passed CI.
+      //
+      // The opposite mistake is just as available: `!== 0` is always TRUE and
+      // reads every boolean as `true`. Both were live in this repository's
+      // tooling before a fixture caught it.
+      const b = lua.lua_toboolean(L, -1) === true
       lua.lua_pop(L, 1)
       return b
     }

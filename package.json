@@ -9,9 +9,11 @@
     "test:luacheck": "node tools/luacheck.js",
     "test:api": "node tools/validate-api.js --api api.lua --resource .",
     "test:api-selftest": "node tools/validate-api.js --selftest",
+    "test:docs": "node tools/gen-docs.js --check",
+    "gen:docs": "node tools/gen-docs.js",
     "test:static": "node tools/static-analysis.js",
     "test:static-selftest": "node tools/static-analysis.js --selftest",
-    "test:all": "npm run test:luacheck && npm run test:static-selftest && npm run test:static && npm run test && npm run test:api-selftest && npm run test:api"
+    "test:all": "npm run test:luacheck && npm run test:static-selftest && npm run test:static && npm run test && npm run test:api-selftest && npm run test:api && npm run test:docs"
   },
   "devDependencies": {
     "fengari": "^0.1.5"
