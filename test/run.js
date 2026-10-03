@@ -40,16 +40,24 @@ function runFile(rel) {
 // test that loads them in a different order is testing a resource that does
 // not exist.
 //
-// `server/validate_config.lua` is here because it is pure: it defines a table
-// and reads no globals, no natives and no exports. That is a design constraint
-// it keeps on purpose -- it is what lets the one file an operator can break
-// be the one file that is fully testable on every push.
+// `server/validate_config.lua` and `server/state_rules.lua` are here because
+// they are pure: they define tables and read no globals, no natives and no
+// exports. That is a design constraint they keep on purpose -- it is what lets
+// the one file an operator can break, and the one that guards what a product
+// writes to the database, both be fully testable on every push.
+//
+// `server/authority.lua` is loaded here TOO, and it is not pure -- it reads the
+// `source` global and calls two natives. It is loaded before the test that
+// stubs all three, which is the one place in this runner where the stubbing
+// order is load-bearing. test/authority.lua says why.
+
 const SOURCES = [
   'shared/cis.lua',
   'shared/migrations.lua',
   'shared/normalize.lua',
   'server/validate_config.lua',
   'server/state_rules.lua',
+  'server/authority.lua',
 ]
 
 // Every `test/*.lua` file is a suite, and none of them is listed by name. A

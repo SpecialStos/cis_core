@@ -201,8 +201,20 @@ end)
 -- ox_inventory does not emit an event when its contents change, only when a
 -- container is opened, so this is the only external signal available to resend
 -- the snapshot. Harmless when ox_inventory is not the configured inventory.
-AddEventHandler('ox_inventory:openedInventory', function(src)
-    pushSnapshot(src)
+--
+-- The source goes through CisAuthority like every other handler in this
+-- resource, and for the same reason: `ox_inventory:openedInventory` is a name a
+-- client can type, and the source here arrives from the payload. The impact is
+-- smaller than the job handlers -- the snapshot is pushed to the resolved
+-- player rather than to the sender, so the worst a forgery achieves is making
+-- an arbitrary player recompute their own inventory -- and "smaller" is not
+-- "none", and the rule is not worth breaking in one file for the sake of a
+-- cheaper shape in it.
+AddEventHandler('ox_inventory:openedInventory', function(payloadSrc)
+    local src = CisAuthority.resolveSource(payloadSrc, 'ox_inventory:openedInventory')
+    if src then
+        pushSnapshot(src)
+    end
 end)
 
 -- The capability table, registered into cis_libs as `inventory`.

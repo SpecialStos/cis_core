@@ -214,6 +214,21 @@ function CisDoctor.environment()
         count == 0 and 'no product has called exports["cis_core"]:Migrate() yet -- that is expected until you install one'
             or nil)
 
+    ------------------------------------------------------- event authority
+    -- Zero on a healthy server, ever. Anything above zero means a client sent
+    -- an event naming a source that was not its own -- which is the signature
+    -- of a cheat menu, and something an operator should never have to ask the
+    -- meaning of.
+    local spoofed = CisAuthority and CisAuthority.spoofed or 0
+    if spoofed == 0 then
+        line(env, 'SET', 'event authority', 'clean -- no client has named a source that was not its own', nil)
+    else
+        line(env, 'MISSING', 'event authority', ('%d spoofed event source(s) refused'):format(spoofed),
+            [[a client sent an event naming somebody else's source. Each one was refused and the network
+            source was used instead. Nothing was granted, but it is worth knowing which resource or cheat
+            produced it -- the console line printed on the first one names the event]])
+    end
+
     ----------------------------------------------------------- the state store
     -- Called as a MODULE function, not through `exports['cis_core']`. Asking a
     -- resource for one of its own exports is the self trap documented in

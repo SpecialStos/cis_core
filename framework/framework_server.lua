@@ -744,31 +744,70 @@ CreateThread(function()
     end
 end)
 
+-- =============================================================================
+--  WHO AN EVENT IS ABOUT
+--
+--  The four handlers below read a player source out of an event payload, which
+--  in FiveM is a value the sender chose: a client can `TriggerServerEvent`
+--  with any name and any payload, so `esx:playerLoaded` is not an ESX event, it
+--  is a name a player can type.
+--
+--  That was true here for this resource's whole life, and `PublishJobUpdate`
+--  ends in `TriggerClientEvent('cis_libs:jobUpdated', src, ...)` -- so a client
+--  naming somebody else's source made THAT PLAYER'S CLIENT receive a job it did
+--  not have, and cis_core's own client stores it.
+--
+--  The rule and its implementation live in server/authority.lua, so the same
+--  answer is not re-derived in each file that handles an event. `CisAuthority`
+--  is available at event time regardless of load order; nothing below calls it
+--  during file execution.
+-- =============================================================================
+
 -- The four events below are the frameworks' own notifications, and they are
 -- what keeps the job histogram live after startup. Two per framework because
 -- the two ecosystems are not interchangeable and a server runs exactly one:
 -- qbx_core still fires the QBCore events for compatibility, and a listener
 -- for the qbx_core-specific ones alone would miss players on a QBCore build.
--- The src extraction below covers both event payload shapes (QBCore passes a
--- player object, ESX passes a number), because the two cannot be told apart by
--- the event alone.
+-- The src extraction covers both event payload shapes (QBCore passes a player
+-- object, ESX passes a number), because the two cannot be told apart by the
+-- event alone -- and then, above, neither of them is allowed to decide who the
+-- event is about.
 RegisterNetEvent('QBCore:Server:PlayerLoaded', function(player)
-    local src = player and (player.PlayerData and player.PlayerData.source or player.source)
+    local claimed = nil
+    if type(player) == 'table' then
+        claimed = (type(player.PlayerData) == 'table' and player.PlayerData.source) or player.source
+    end
+    local src = CisAuthority.resolveSource(claimed, 'QBCore:Server:PlayerLoaded')
     if src then
-        exports['cis_libs']:PublishJobUpdate(Framework.GetPlayerJob(src), src)
+        local job = Framework.GetPlayerJob(src)
+        if job then
+            exports['cis_libs']:PublishJobUpdate(job, src)
+        end
         exports['cis_libs']:PublishInventory(src)
     end
 end)
 
-AddEventHandler('esx:playerLoaded', function(src)
-    exports['cis_libs']:PublishJobUpdate(Framework.GetPlayerJob(src), src)
-    exports['cis_libs']:PublishInventory(src)
+AddEventHandler('esx:playerLoaded', function(payloadSrc)
+    local src = CisAuthority.resolveSource(payloadSrc, 'esx:playerLoaded')
+    if src then
+        local job = Framework.GetPlayerJob(src)
+        if job then
+            exports['cis_libs']:PublishJobUpdate(job, src)
+        end
+        exports['cis_libs']:PublishInventory(src)
+    end
 end)
 
-RegisterNetEvent('QBCore:Server:OnJobUpdate', function(src, job)
-    exports['cis_libs']:PublishJobUpdate(job, src)
+RegisterNetEvent('QBCore:Server:OnJobUpdate', function(payloadSrc, job)
+    local src = CisAuthority.resolveSource(payloadSrc, 'QBCore:Server:OnJobUpdate')
+    if src and type(job) == 'table' and job.name then
+        exports['cis_libs']:PublishJobUpdate(job, src)
+    end
 end)
 
-AddEventHandler('esx:setJob', function(src, job)
-    exports['cis_libs']:PublishJobUpdate(job, src)
+AddEventHandler('esx:setJob', function(payloadSrc, job)
+    local src = CisAuthority.resolveSource(payloadSrc, 'esx:setJob')
+    if src and type(job) == 'table' and job.name then
+        exports['cis_libs']:PublishJobUpdate(job, src)
+    end
 end)

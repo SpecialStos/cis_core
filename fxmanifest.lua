@@ -79,6 +79,7 @@ server_scripts {
     -- three config files below it, and that reads in the order an operator
     -- edits them.
     'server/validate_config.lua',
+    'server/authority.lua',
     'configs/master_config.lua',
     'configs/security_config.lua',
     'configs/discordLogs_config.lua',
