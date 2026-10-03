@@ -182,21 +182,30 @@ function InventoryRemove(src, item, amount)
     return ok
 end
 
--- A client asking for a fresh copy. The only handler here that is NOT rate
--- limited meaningfully, because it does no work beyond building a snapshot
--- from data already in memory.
-
--- Registration deferred to a thread so it happens after every server file has
--- executed, rather than depending on this file's position in fxmanifest
--- relative to whatever else registers callbacks. The cost is a window during
--- resource start in which a client asking for this name gets 'unknown' rather
--- than a number; the alternative is a load-order coupling between files that
--- have no other reason to know about each other.
-CreateThread(function()
-    exports['cis_libs']:RegisterCallback('cis_libs:inventoryCount', function(src, item)
-        return InventoryCount(src, item)
-    end)
-end)
+-- THERE USED TO BE A CALLBACK HERE, AND IT WAS DEAD.
+--
+-- `RegisterCallback('cis_libs:inventoryCount', ...)`, deferred to a thread for
+-- load-order reasons that were real. It answered a count to a client that asked
+-- for one.
+--
+-- Nothing asks. The client's count is `exports['cis_libs']:InventoryCount`,
+-- which forwards to the `inventory` capability directly -- the capability this
+-- file registers, whose `Count` is a local cache read. A client wanting a
+-- fresher copy calls `RequestInventorySync`, which makes the server PUSH a
+-- snapshot; there is no request/response name to call.
+--
+-- So it was a callback registered in ANOTHER RESOURCE'S NAMESPACE, for a name
+-- that resource's own contract does not contain, invoked by nothing in this
+-- repository or any other. Worse than dead: `RegisterCallback` records the
+-- owner as `GetInvokingResource()`, which is cis_core, so if cis_libs ever grew
+-- a name by that definition, cis_core's unreachable handler would win the slot
+-- and shadow the real one. A resource that squatters a name in someone else's
+-- namespace is making a claim about their contract that is not true.
+--
+-- Nothing replaces it, and that is the point worth stating: the server-side
+-- count a consumer wants is already `exports['cis_libs']:InventoryCount(src,
+-- item)`, which forwards here. Registering a second route to the same function
+-- would be duplication with a name collision attached.
 
 -- ox_inventory does not emit an event when its contents change, only when a
 -- container is opened, so this is the only external signal available to resend
