@@ -126,6 +126,27 @@ local function askLegacyEsx()
     return raised
 end
 
+-- Record what detection concluded, for cis_debug and cis_core_doctor.
+--
+-- Every exit from the CONFIGURED branches goes through this. It used to be set
+-- only on the AUTO and CUSTOM paths, so a server that had explicitly named its
+-- framework -- `Type = "QBCORE"`, which is the second most common way to run
+-- this resource -- finished boot with `Framework.detected` nil, and the doctor
+-- fell back to reading the config instead of reading the answer. The field is
+-- documented as "what the last detect() concluded"; for those servers it
+-- concluded nothing, and a nil there means "not detected" is indistinguishable
+-- from "never looked".
+local function record(name, how, resource, reason)
+    Framework.detected = {
+        name = name,
+        how = how,
+        resource = resource,
+        version = resource and GetResourceMetadata(resource, 'version', 0) or nil,
+        reason = reason,
+    }
+    return Framework.detected
+end
+
 local function detect()
     local configured = string.upper((Config and Config.Framework and Config.Framework.Type) or 'AUTO')
     customAdapter = loadCustomAdapter()
@@ -227,6 +248,8 @@ local function detect()
             if ok and core then
                 QBCore = core
                 provider = 'QBCORE'
+                record('QBCORE', 'configured', 'qb-core',
+                    ('configured as %s and qb-core answered'):format(configured))
                 return
             end
             print('cis_libs: qb-core started but GetCoreObject failed')
@@ -263,6 +286,8 @@ local function detect()
                 QBX = core
                 QBCore = core
                 provider = 'QBOX'
+                record('QBOX', 'configured', 'qbx_core',
+                    ('configured as %s and qbx_core published GetCoreObject'):format(configured))
                 return
             end
             local hasGetPlayer = pcall(function()
@@ -270,6 +295,8 @@ local function detect()
             end)
             if hasGetPlayer then
                 provider = 'QBOX'
+                record('QBOX', 'configured', 'qbx_core',
+                    'qbx_core removed GetCoreObject; reached through its GetPlayer export')
                 return
             end
             print('cis_libs: qbx_core is started but exposes neither '
@@ -293,6 +320,12 @@ local function detect()
             if ok and core then
                 QBCore = core
                 provider = 'QBCORE'
+                -- Recorded BEFORE the config rewrite below, because that rewrite is the
+                -- point: the operator configured QBOX and this server is bridging as
+                -- QBCORE, and both facts belong in the answer rather than one of
+                -- them replacing the other.
+                record('QBCORE', 'configured', 'qb-core',
+                    ('configured as %s but qb-core is what is running'):format(configured))
                 -- The config is REWRITTEN here too, not just on the AUTO path.
                 -- Leaving it saying QBOX while the server bridges as QBCORE means
                 -- the client -- which receives Config.Framework.Type verbatim in
@@ -336,6 +369,8 @@ local function detect()
                 -- 'ESX', because Config.Framework.Type is what a consumer reads
                 -- to decide how to talk to the framework.
                 provider = configured
+                record(configured, 'configured', 'es_extended',
+                    ('configured as %s and es_extended answered'):format(configured))
                 return
             end
         end
