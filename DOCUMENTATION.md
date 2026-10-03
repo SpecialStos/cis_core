@@ -631,7 +631,7 @@ exports['cis_core']:GetCoreSummary()
 
 ## §7 — Inventory service
 
-Registered into `cis_libs` as the `inventory` capability, on both realms.
+Registered into `cis_libs` as the `inventory` capability, on both realms — `CisCoreInventory` on the server and `CisCoreInventoryClient` on the client, and each is also callable directly as `exports['cis_core']:CisCoreInventory()`.
 
 This is the **service**, not a third-party adapter: the `name -> amount`
 normalisation every consumer depends on, with the framework as its fallback.
@@ -755,8 +755,17 @@ See `SECURITY.md` for the trust model and the report process.
 
 ```
 npm install
-npm test          # 224 assertions, no FiveM server required
-npm run test:all  # + syntax check + the api contract self-test
+npm test          # 277 assertions in the pure suites, no FiveM server required
+npm run test:all  # + 12 framework scenarios, syntax, contract, docs
+
+`npm test` runs TWO halves, and the split matters: the pure suites cover the
+logic, and `test/scenarios/` runs each framework world in its own Lua state.
+The scenarios are where the ESX self-argument bug, the QBCore `GetPlayers` shape
+and the inventory zero bug were found — every one of them invisible to a test
+that shared a state with the one before it.
+
+Both counts move. `npm test` prints the current totals, and `npm run test:docs`
+fails if the number quoted above has drifted from what the suite runs.
 ```
 
 | Suite | Covers |
@@ -805,7 +814,24 @@ server/
   initialize.lua        boot, config handover, capability registration
 client/
   inventory.lua       the client count cache
-test/  tools/
+sql/
+  cis_core.sql        the two tables, for provisioning by hand
+CALLBACKS.md         GENERATED from api.lua by tools/gen-docs.js
+test/
+  harness.lua         one assertion helper, shared by every suite
+  framework_env.lua   a fake FiveM: exports, resources, threads, a fake driver
+  fake_json.lua       a real JSON codec, because fengari has none
+  run.js              the pure suites
+  scenarios.js        the framework scenarios, each in its own Lua state
+  scenarios/          one file per world: qbcore, qbox, esx, none, legacy,
+                      misconfigured, custom, adversarial, state, doctor,
+                      inventory, client
+tools/
+  validate-api.js     api.lua against the registered surface
+  gen-docs.js         CALLBACKS.md from api.lua
+  static-analysis.js  the four defects a parser cannot see
+  luacheck.js         parse every .lua file
+  doc-check.js        this documentation against the contract
 ```
 
 ---

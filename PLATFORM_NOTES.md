@@ -142,7 +142,7 @@ will eventually try to "fix" it.
 `Cis.framework.player(src)` — lowercase, and nothing in `cis_core` provides a
 method called `player`.
 
-The operative contract is `cis_libs`'s registry, `shared/registry.lua`:
+The operative contract is `cis_libs`'s registry, `cis_libs/shared/registry.lua`:
 
 ```lua
 CisRegistry.SLOTS = {

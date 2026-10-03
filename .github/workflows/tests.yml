@@ -52,10 +52,19 @@ jobs:
         # run in its history was green, and the linter had never run once.
         run: npm run test:luacheck
 
-      - name: The generated docs must match api.lua
-        # CALLBACKS.md is generated from the contract. If it is stale, the doc
-        # and the code disagree and a reader believes the doc -- which is what a
-        # table looks like. Regenerate with `npm run gen:docs`.
+      - name: Prove the doc checker still catches things
+        # Four mutations of the REAL DOCUMENTATION.md, each of which must raise
+        # exactly one code, plus a negative: the same document with citations to
+        # cis_libs and qbx_core added must come back CLEAN, or the checker is
+        # crying wolf on exactly the references a technical reader needs.
+        run: npm run test:docs-selftest
+
+      - name: The docs must match the contract and the tree
+        # CALLBACKS.md is generated from api.lua, so staleness there means the
+        # doc and the code disagree and a reader believes the doc. doc-check.js
+        # is the other half: every export, command, event and shipped file has
+        # to be named in the prose, every link has to resolve, and the
+        # assertion count has to match what the suite runs.
         run: npm run test:docs
 
       - name: Validate api.lua against the registered surface

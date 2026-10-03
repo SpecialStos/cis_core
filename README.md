@@ -100,9 +100,18 @@ in `cis_bridge` and register separately, so either can be replaced alone.
 
 ```
 npm install
-npm test          # 224 assertions, no FiveM server required
-npm run test:all  # + syntax check + the api contract self-test
+npm test          # 277 assertions in the pure suites, plus 12 framework scenarios
+npm run test:all  # + syntax, contract validation, docs staleness
 ```
+
+Two halves, and the split matters. The pure suites cover the logic;
+`test/scenarios/` runs each framework world in **its own Lua state**, because a
+suite that shares a state passes in an order nobody would run it in. The ESX
+self-argument bug, the QBCore `GetPlayers` shape and the inventory zero bug were
+all found by the scenarios and by none of the other suites.
+
+Both counts move. `npm test` prints the current totals, and `npm run test:docs`
+fails the build if the number quoted here has drifted from what the suite runs.
 
 `api.lua` is the machine-readable contract — every export, net event and console
 command — and `npm run test:api` fails if it ever drifts from what the code
@@ -123,3 +132,4 @@ actually registers.
 | [`CHANGELOG.md`](CHANGELOG.md) | Keep a Changelog format, with the reasoning |
 | [`SECURITY.md`](SECURITY.md) | Trust model, what is enforced, how to report |
 | [`PLATFORM_NOTES.md`](PLATFORM_NOTES.md) | Where `cis_core` and `cis_libs` disagree, and which side is right |
+| [`LICENSE.md`](LICENSE.md) | MIT. The attribution notice must be retained in every copy |

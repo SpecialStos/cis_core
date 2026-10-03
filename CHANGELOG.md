@@ -243,7 +243,7 @@ state the roadmap has been asking for since it was written.
   affected. See §9 of `DOCUMENTATION.md` and `SECURITY.md` §1.2.
 - **[SECURITY] The client listened to a qbx_core event that is not a player's
   job change.** `qbx_core:client:onJobUpdate` is the job *definition* registry
-  event — `server/groups.lua` broadcasts it to every client as
+  event — `qbx_core/server/groups.lua` broadcasts it to every client as
   `(jobName, definition)` on every job-definition edit. It was bound to the
   player-job handler, which was harmless only because the first argument is a
   string and the shape reader rejected it. A job definition table has a `name`
