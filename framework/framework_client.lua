@@ -194,6 +194,46 @@ function Framework.GetPlayerJob()
     return PlayerJob
 end
 
+-- The two handlers the framework's own client events are registered against.
+--
+-- They were REFERENCED and never defined. Every `RegisterNetEvent` below passed
+-- a nil handler, so on a QBCore, qbx_core or ESX server the client received
+-- `QBCore:Client:OnJobUpdate`, `qbx_core:client:onJobUpdate`, `esx:setJob` and
+-- the three playerLoaded events and discarded every one of them. The job only
+-- ever moved when the SERVER happened to broadcast `cis_libs:jobUpdated`, so a
+-- job change the server did not originate -- which is the common case, since a
+-- job change usually starts on the client -- left this client answering with a
+-- stale job, and nothing anywhere said so.
+--
+-- Both do what the broadcast handlers above do: take the job, ignore anything
+-- that is not one. The frameworks differ in the shape they send, so each reads
+-- its own argument rather than assuming a shared one:
+--
+--   esx:setJob(job, lastJob)                      -> the job itself
+--   QBCore:Client:OnJobUpdate(job)                -> the job itself
+--   qbx_core:client:onJobUpdate(job)              -> the job itself
+--   esx:playerLoaded(playerData, isNew, skin)     -> playerData, job under .job
+--   QBCore:Client:OnPlayerLoaded(playerData)       -> playerData, job under .job
+--   qbx_core:client:playerLoaded(playerData)       -> playerData, job under .job
+--
+-- Taking only the first shape would have made every playerLoaded event a no-op,
+-- which is the same bug the nil handlers were.
+function Framework.UpdatePlayerJob(job)
+    if type(job) == 'table' then
+        PlayerJob = job
+    end
+end
+
+function Framework.OnPlayerLoaded(data)
+    if type(data) ~= 'table' then
+        return
+    end
+    local job = data.name and data or data.job
+    if type(job) == 'table' and job.name then
+        PlayerJob = job
+    end
+end
+
 -- The framework's own notification, and the native feed as the last resort.
 -- The native fallback is not dead code: it is what a server in standalone mode
 -- gets, and it is why notifications work at all on a server where detection
@@ -217,12 +257,18 @@ function Framework.ShowNotification(message, kind)
     end
     BeginTextCommandThefeedPost('STRING')
     AddTextComponentSubstringPlayerName(tostring(message))
-    EndTextCommandThefeedPostTicker(false, false)
+    EndTextComponentThefeedPostTicker(false, false)
 end
 
-function Framework.ShowNotification(message, kind)
-    exports['cis_libs']:Notify(message, kind)
-end
+-- There was a second definition of this function immediately below the one
+-- above, which forwarded to `exports['cis_libs']:Notify`, and cis_libs's Notify
+-- forwards back to the `framework` capability's ShowNotification. The second
+-- definition won, so the pair was one unbounded cross-resource recursion
+-- waiting for the client capability to be registered. It stayed latent only
+-- because the client never registered that capability -- which is its own bug,
+-- and the reason every notification on a configured server fell through to the
+-- native GTA feed instead of the framework's own UI. Both are fixed: this is
+-- the one and only definition, and the capability below is registered.
 
 -- Callback style, not the library's await style, because this is the shape a
 -- framework consumer already writes. The timeout and the rate limit come free
@@ -320,6 +366,18 @@ CreateThread(function()
     end
     detect()
     FrameworkLoaded = true
+    -- The CLIENT half of the framework capability, and it was never registered.
+    -- The server has registered `framework` since the split; the client had
+    -- only `inventory`, so `CisRegistry.has('framework')` was false on the
+    -- client and every `Cis.framework` call fell through to the native GTA
+    -- feed. A server's own notification UI was unreachable from every consumer,
+    -- and `exports['cis_libs']:GetFramework()` on the client waited 15s for a
+    -- capability that was never going to arrive.
+    --
+    -- Registered AFTER detect() and after the duplicate ShowNotification was
+    -- removed: while that duplicate existed, registering this would have turned
+    -- every notification into Notify -> ShowNotification -> Notify.
+    exports['cis_libs']:RegisterCapability('framework', 'cis_core:CisCoreFramework')
     -- Read the job once, immediately, so a consumer that asks before the
     -- framework's first event still gets an answer. The listeners below then
     -- keep it current.

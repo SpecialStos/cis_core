@@ -162,7 +162,13 @@ Config.Framework = {
     },
 
     Database = {
-        -- "oxmysql", "mysql-async", "ghmattimysql", "mongodb".
+        -- "oxmysql", "mysql-connector", "ghmattimysql", "mongodb".
+        -- These are the DRIVER RESOURCE names -- the folder name on disk, which
+        -- is what an adapter registers against. "mysql-async" was listed here
+        -- and no adapter has ever supported it: it shares a name with
+        -- mysql-connector and none of its exports, and naming it would only
+        -- have produced a server that registered an adapter and then raised on
+        -- its first query.
         -- This is the NAME OF THE DRIVER RESOURCE to use. Connection details
         -- live in that resource's own config, never here and never in this
         -- repository.

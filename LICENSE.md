@@ -51,7 +51,11 @@ SOFTWARE.
 
 ## Third-party dependencies
 
-`cis_core` has **no runtime dependencies**. It is designed to run alongside —
-not on top of — ox_lib, ox_inventory, ox_target, oxmysql, qb-core, qbx_core or
-es_extended, but it does not require, vendor or ship any of them. Those remain
-under their own licences, and this project claims no rights in them.
+`cis_core` has **no third-party runtime dependencies**. It is designed to run
+alongside — not on top of — ox_lib, ox_inventory, ox_target, oxmysql, qb-core,
+qbx_core or es_extended, but it does not require, vendor or ship any of them.
+Those remain under their own licences, and this project claims no rights in them.
+
+It does have one **first-party** runtime dependency: `cis_libs`, declared in
+`fxmanifest.lua` and required for the resource to boot at all. Everything
+`cis_core` does is registered into `cis_libs` as a capability.

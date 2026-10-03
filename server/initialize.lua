@@ -29,7 +29,14 @@ CreateThread(function()
     -- The tables, by value. Functions are stripped on the far side, which is
     -- why Security.DropPlayer arrives as a boolean and the code that implements
     -- it arrives in step 3.
-    local ok, why = exports['cis_libs']:SetConfig(Config, Security)
+    --
+    -- Three of them, and the third was the missing one. The webhook table was
+    -- never handed over; cis_libs read it as a `DiscordConfig` global, which
+    -- lives in THIS resource's Lua state, so the lookup was always nil and a
+    -- server with real webhooks pasted into the config sent nothing at all
+    -- without printing an error. It crosses here instead, and cis_libs keeps it
+    -- server-side only.
+    local ok, why = exports['cis_libs']:SetConfig(Config, Security, DiscordConfig)
     configApplied = ok == true
     if not ok then
         -- First supplier wins, and this one lost. Say so and carry on with the

@@ -101,16 +101,21 @@ local function detect()
     -- the ordering that distinguishes qbx_core from qb-core is unit tested
     -- rather than trusted.
     if configured == 'AUTO' or customAdapter then
-        local choice = CisDetect.framework(
+        -- ACROSS THE BOUNDARY, not the global. `CisDetect` is defined in
+        -- cis_libs, and FiveM gives every resource its own Lua state, so the
+        -- bare global was always nil here. Since AUTO is the shipped default,
+        -- that meant `detect()` raised inside its thread on every stock
+        -- install: the framework capability was never registered, no job count
+        -- was claimed, and every player lookup answered nil -- with nothing in
+        -- the console, because the failure was in a thread nobody awaited. The
+        -- client half already called the export; this is the same call.
+        local choice = exports['cis_libs']:DetectFramework(
             configured,
             customAdapter and {
                 resource = customAdapter.resource,
                 name = customAdapter.name,
                 getPlayer = customAdapter.getPlayer,
-            } or nil,
-            function(name) return GetResourceState(name) == 'started' end,
-            function(name) return GetResourceMetadata(name, 'version') end,
-            probeExport
+            } or nil
         )
         Framework.detected = choice
         provider = choice.name
@@ -244,9 +249,25 @@ local function detect()
             local ok, core = pcall(function()
                 return exports['qb-core']:GetCoreObject()
             end)
-            if ok then
+            -- `ok and core`, not `ok`. A started resource is not a resource that
+            -- has published its exports yet, and the pcall is happy either way:
+            -- `ok` alone returned with `QBCore = nil` and `provider = 'QBCORE'`,
+            -- which is a bridge that looks installed and answers nil for every
+            -- player. The ESX branch below has always had this right, and says
+            -- why in a comment.
+            if ok and core then
                 QBCore = core
                 provider = 'QBCORE'
+                -- The config is REWRITTEN here too, not just on the AUTO path.
+                -- Leaving it saying QBOX while the server bridges as QBCORE means
+                -- the client -- which receives Config.Framework.Type verbatim in
+                -- the config payload -- takes the QBOX branch, reaches for
+                -- exports.qbx_core, finds no such resource, and settles for
+                -- standalone: the two halves of the same bridge disagreeing
+                -- about which framework the server runs.
+                if Config and Config.Framework then
+                    Config.Framework.Type = 'QBCORE'
+                end
                 return
             end
         end
@@ -524,7 +545,6 @@ function Framework.SetPlayerJob(serverId, job, grade)
     elseif provider == 'ESX' or provider == 'ESX-LEGACY' then
         player.setJob(job, grade)
     end
-    exports['cis_libs']:PublishJobUpdate({ name = job, grade = grade }, serverId)
     exports['cis_libs']:PublishJobUpdate({ name = job, grade = grade }, serverId)
 end
 
