@@ -62,6 +62,7 @@ const CODE = {
   STALE_COUNT: 'DOC_stale_count',
   DEAD_LINK: 'DOC_dead_link',
   VERSION: 'DOC_version',
+  STALE_CLAIM: 'DOC_stale_claim',
 }
 
 
@@ -201,6 +202,11 @@ if (process.argv.includes('--selftest')) {
       code: CODE.LAYOUT,
       mutation: { remove: /## §12 — Layout[\s\S]*?(?=\n---)/ },
     },
+    {
+      name: 'claims-untested.md',
+      code: CODE.STALE_CLAIM,
+      mutation: { append: NL + NL + 'The framework bridge is deliberately not unit-tested.' + NL },
+    },
   ]
 
   console.log('doc-check self-test')
@@ -325,8 +331,85 @@ function runAll() {
   checkAssertionCount()
   checkReferences()
   checkVersions()
+  checkUntestedClaims()
+  checkScenariosAreDiscoverable()
 }
 
+// Claims the documentation must not make, because the tree makes them false.
+//
+// This is the narrowest and most useful check in the file. A documentation
+// claim can be wrong in ways no tool can see -- a wrong return value, a wrong
+// framework convention. But a handful of claims are checkable against the TREE
+// itself, and the most expensive of those is "this is not tested".
+//
+// DOCUMENTATION.md said, for most of this resource's life, that the framework
+// abstraction and the inventory service were "deliberately not unit-tested
+// against a mock". It stayed true-looking long after twelve scenarios covered
+// both of them, and a reader would have concluded a class of shipping bug was
+// unguarded. A stale claim that understates what is checked costs more than a
+// missing one: the missing claim sends someone to write a test, the false one
+// sends them to ship.
+//
+// Deliberately narrow. It checks THIS claim shape and nothing else, because a
+// general "is the docs lying" checker is not a thing you can build and a
+// general one that guessed would produce findings nobody could act on.
+function checkUntestedClaims() {
+  const scenarioDir = path.join(root, 'test', 'scenarios')
+  const scenarios = fs.existsSync(scenarioDir)
+    ? fs.readdirSync(scenarioDir).filter((f) => f.endsWith('.lua'))
+    : []
+  if (scenarios.length === 0) return
+
+  // BACKTICKED SPANS ARE STRIPPED FIRST, and that is not a detail.
+  //
+  // The section that documents the fix for a stale claim has to QUOTE the stale
+  // claim to explain what changed -- and the first version of this check fired
+  // on exactly that, reporting a document for saying "this used to say X" while
+  // also saying X is no longer true. A quoted example is not a claim, and a
+  // check that cannot tell them apart will eventually be silenced for being
+  // wrong rather than being fixed.
+  const doc = docs.DOCUMENTATION_ORIGINAL.replace(/`[^`]*`/g, '``')
+  // "not tested", "no test over", "deliberately not unit-tested", and the
+  // argument that usually follows them. Each of these is a claim about coverage,
+  // and coverage is the one thing the tree can answer.
+  const claims = [
+    /deliberately\s+\*{0,2}not\*{0,2}\s+unit-tested/i,
+    /are not (?:deliberately )?tested/i,
+    /no test[s]? over this file/i,
+    /there (?:was|is) no test/i,
+    /deliberately not tested/i,
+  ]
+  for (const re of claims) {
+    const m = re.exec(doc)
+    if (!m) continue
+    finding(
+      CODE.STALE_CLAIM,
+      'DOCUMENTATION.md',
+      `claims something is untested ("${m[0].trim()}") while ${scenarios.length} scenarios exist`,
+      'a coverage claim the tree can contradict is the worst kind of stale: it tells a reader a bug class is unguarded when it is not. Say what IS covered, and say what only a live server can answer',
+    )
+  }
+}
+
+// And the mirror: if a scenario directory exists, the documentation must
+// mention it at all. A reader cannot be told to run something they cannot find.
+function checkScenariosAreDiscoverable() {
+  const scenarioDir = path.join(root, 'test', 'scenarios')
+  const scenarios = fs.existsSync(scenarioDir)
+    ? fs.readdirSync(scenarioDir).filter((f) => f.endsWith('.lua'))
+    : []
+  if (scenarios.length === 0) return
+  for (const d of ['README.md', 'DOCUMENTATION.md']) {
+    if (!mentions(docs[d], 'test/scenarios')) {
+      finding(
+        CODE.STALE_CLAIM,
+        d,
+        `${scenarios.length} scenarios exist and neither this document nor the README points at them`,
+        'a reader who wants to run the framework tests has to find the directory themselves',
+      )
+    }
+  }
+}
 function checkLayout(doc) {
   const i = doc.indexOf('§12')
   const layout = i === -1 ? doc : doc.slice(i)

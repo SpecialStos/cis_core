@@ -781,11 +781,42 @@ data, not a script, and `tools/validate-api.js` fails if it ever drifts from
 what the code actually registers — **exports, net events and console commands
 alike**.
 
-The framework abstraction and the inventory service are adapters around natives
-and third-party exports, and are deliberately **not** unit-tested against a mock
-— testing the mock proves nothing about the framework. What is tested is the part
-that is genuinely pure and genuinely has bitten us: the ordering, the
-normalisation, the value rules, and the validator.
+### 11.1 What is tested, and what a mock can and cannot do
+
+This section used to say the framework abstraction and the inventory service carried
+no unit tests, on the grounds that a mock proves nothing about a framework.
+**That was true when written and it is now exactly wrong**, and the way it became wrong is the argument for the other half.
+
+A mock cannot tell you whether QBCore's `Functions.AddMoney` takes a dot or a
+colon, or whether `ESX.GetPlayers()` answers objects or source ids. Those are
+facts about other people's code, and the only honest source is their source.
+
+But the *decision* — which branch to take for a given world, what to do with the
+answer, whether the two realms agree — is this resource's, and it is entirely
+testable. It was written inline and therefore unreachable, which is not the same
+as untestable; it is untested.
+
+`test/scenarios/` runs each framework world in **its own Lua state**, because a
+suite that shares a state passes in an order nobody would run it in. That is
+where these were found:
+
+| Found by a scenario | |
+|---|---|
+| ESX xPlayer calls missing `self` | money, jobs and permissions were broken on ESX entirely |
+| `GetPlayers()` answering source ids on QBCore | objects on ESX, ids on QBCore, strings standalone |
+| The inventory service answering 0 for everything | the one branch that did not apply its own dispatch rule |
+| Two client listeners on qbx_core events | one that does not exist, one that is not a job change |
+
+**And the lesson from the fixtures, which is the part worth keeping.** Three
+scenarios declared `GetPlayers` returning player objects where QBCore returns
+ids. A fixture written to match the code rather than the framework is a test
+that proves the code matches the code. The fixtures now assert what the
+framework actually does, and the scenario asserting the resolved shape is what
+catches the next version of that bug.
+
+What no mock and no scenario here can tell you: whether a real qbx_core answers
+the way v1.24.0's source says. That is the live-server gate, and it is still
+open.
 
 ---
 
